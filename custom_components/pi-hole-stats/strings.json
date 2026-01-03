@@ -3,17 +3,18 @@
     "step": {
       "user": {
         "title": "Setup Pi-Hole Statistics",
-        "description": "Enter your Pi-hole details. For v6, use the App Password.",
+        "description": "Enter your Pi-hole details. For v6, use the App Password from Settings > Web Interface.",
         "data": {
           "host": "Host / IP Address",
           "port": "Port",
           "location": "API Path (admin or api)",
-          "api_key": "API Key / App Password"
+          "api_key": "App Password or API Key"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to Pi-Hole. Check IP/Port/Token."
+      "cannot_connect": "Failed to connect. Check Host/Port.",
+      "invalid_auth": "Invalid App Password or API Key"
     }
   }
 }
