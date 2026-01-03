@@ -41,14 +41,12 @@ class PiHoleStatSensor(CoordinatorEntity, SensorEntity):
         
         # Unique ID prevents duplicates
         self._attr_unique_id = f"pi_hole_stat_{data_key}_{entry.entry_id}"
-        
-        # Sets the entity_id to sensor.pi_hole_stat_<key> as requested
         self.entity_id = f"sensor.pi_hole_stat_{data_key}"
 
         # Grouping entities into a single Device in the UI
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Pi-hole Statistics",
+            "name": "Pi-Hole Statistics",
             "manufacturer": "Pi-hole",
             "model": "FTL v6.0+",
             "configuration_url": f"http://{coordinator.host}:{coordinator.port}",
@@ -63,7 +61,7 @@ class PiHoleStatSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return entity specific state attributes for the sidebar/card."""
+        """Return entity specific state attributes."""
         return {
             "last_updated": dt_util.now().strftime("%Y-%m-%d %H:%M:%S"),
             "host": self.coordinator.host,
