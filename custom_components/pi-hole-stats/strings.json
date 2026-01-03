@@ -2,19 +2,18 @@
   "config": {
     "step": {
       "user": {
-        "title": "Setup Pi-Hole Statistics",
-        "description": "Enter your Pi-hole details. For v6, use the App Password from Settings > Web Interface.",
+        "title": "Setup Pi-hole Statistics (v6)",
+        "description": "Enter your Pi-hole v6 details. \n\nFind your App Password in Pi-hole: **Settings > Web Interface > Expert Mode > Configure App Password**.",
         "data": {
           "host": "Host / IP Address",
-          "port": "Port",
-          "location": "API Path (admin or api)",
-          "api_key": "App Password or API Key"
+          "port": "Port (usually 80)",
+          "api_key": "App Password"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect. Check Host/Port.",
-      "invalid_auth": "Invalid App Password or API Key"
+      "cannot_connect": "Failed to connect to Pi-hole host.",
+      "invalid_auth": "Invalid App Password. Ensure you copied the full string including any '=' at the end."
     }
   }
 }
