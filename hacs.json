@@ -1,5 +1,5 @@
 {
-  "name": "Pi-Hole Statistics",
+  "name": "Pi-hole Statistics",
   "content_type": "integration",
   "homeassistant": "2025.1.0"
 }
