@@ -1,0 +1,9 @@
+{
+  "domain": "pi_hole_stats",
+  "name": "Pi-Hole Statistics",
+  "documentation": "https://github.com/adelando/pi-hole-stats",
+  "issue_tracker": "https://github.com/adelando/pi-hole-stats/issues",
+  "codeowners": ["@adelando"],
+  "version": "0.1",
+  "iot_class": "local_polling"
+}
