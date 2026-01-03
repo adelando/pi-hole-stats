@@ -1,27 +1,36 @@
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorDeviceClass,
+    SensorStateClass,
+)
 from .const import DOMAIN
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     
-    sensors = [
-        PiHoleSensor(coordinator, "Queries per Minute", "queries_pm", "queries"),
-        PiHoleSensor(coordinator, "CPU Load", "cpu_load", "%"),
-        PiHoleSensor(coordinator, "Memory Usage", "memory_usage", "%"),
-        PiHoleSensor(coordinator, "Temperature", "temperature", "°C"),
+    entities = [
+        PiHoleStatSensor(coordinator, "Queries per Minute", "queries_pm", "req/min", None),
+        PiHoleStatSensor(coordinator, "Temperature", "temperature", "°C", SensorDeviceClass.TEMPERATURE),
+        PiHoleStatSensor(coordinator, "Uptime", "uptime_days", "days", None),
+        PiHoleStatSensor(coordinator, "Ads Blocked Today", "ads_blocked_today", "ads", None),
     ]
-    async_add_entities(sensors)
+    async_add_entities(entities)
 
-class PiHoleSensor(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator, name, data_key, unit):
-        super().__init__(coordinator)
+class PiHoleStatSensor(SensorEntity):
+    def __init__(self, coordinator, name, data_key, unit, device_class):
+        self.coordinator = coordinator
         self._attr_name = f"Pi-Hole {name}"
         self._data_key = data_key
         self._attr_native_unit_of_measurement = unit
+        self._attr_device_class = device_class
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        # Link to the coordinator
+        self._attr_unique_id = f"pihole_{data_key}_{coordinator.host}"
 
     @property
     def native_value(self):
-        # Note: Pi-Hole API returns data in different keys. 
-        # You'll map coordinator.data['key'] here based on actual JSON response.
         return self.coordinator.data.get(self._data_key)
+
+    @property
+    def available(self):
+        return self.coordinator.last_update_success
