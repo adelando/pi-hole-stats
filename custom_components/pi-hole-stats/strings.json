@@ -1,0 +1,16 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Setup Pi-Hole Statistics",
+        "data": {
+          "host": "Host / IP Address",
+          "api_key": "API Token (Optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Pi-Hole"
+    }
+  }
+}
