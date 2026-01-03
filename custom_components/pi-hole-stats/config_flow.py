@@ -10,26 +10,28 @@ class PiHoleStatsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
-            # Test the connection
             host = user_input["host"]
             port = user_input["port"]
             location = user_input["location"]
-            api_key = user_input.get("api_key", "")
-            
-            # Construct URL based on location (v5 vs v6 style)
-            path = "admin/api.php" if location == "admin" else "api"
-            url = f"http://{host}:{port}/{path}?summaryRaw&auth={api_key}"
+            pw = user_input.get("api_key", "")
 
             try:
                 async with async_timeout.timeout(10):
                     async with aiohttp.ClientSession() as session:
-                        async with session.get(url) as response:
-                            if response.status == 200:
-                                return self.async_create_entry(
-                                    title=f"Pi-Hole ({host})", 
-                                    data=user_input
-                                )
-                            errors["base"] = "cannot_connect"
+                        if location == "api":
+                            # Pi-hole v6 Auth Test
+                            url = f"http://{host}:{port}/api/auth"
+                            async with session.post(url, json={"password": pw}) as resp:
+                                if resp.status == 200:
+                                    return self.async_create_entry(title=host, data=user_input)
+                                errors["base"] = "invalid_auth"
+                        else:
+                            # Pi-hole v5 Auth Test
+                            url = f"http://{host}:{port}/admin/api.php?summaryRaw&auth={pw}"
+                            async with session.get(url) as resp:
+                                if resp.status == 200:
+                                    return self.async_create_entry(title=host, data=user_input)
+                                errors["base"] = "invalid_auth"
             except Exception:
                 errors["base"] = "cannot_connect"
 
@@ -38,8 +40,8 @@ class PiHoleStatsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required("host"): str,
                 vol.Required("port", default=80): int,
-                vol.Required("location", default="admin"): vol.In(["admin", "api"]),
-                vol.Optional("api_key"): str,
+                vol.Required("location", default="api"): vol.In(["admin", "api"]),
+                vol.Required("api_key"): str,
             }),
             errors=errors
         )
