@@ -29,10 +29,10 @@ A custom Home Assistant integration that pulls detailed system and network stati
 3. Fill in the following fields:
    - **Host**: The IP address or hostname of your Pi-hole (e.g., `192.168.1.50`).
    - **Port**: Default is `80`.
-   - **API Path**: Select `api` for Pi-hole v6 or `admin` for Pi-hole v5.
-   - **App Password / API Key**: 
+   - **App Password**: 
      - *v6*: Generate an **App Password** in Pi-hole under *Settings > Web Interface*.
-     - *v5*: Use the **API Token** found under *Settings > API/Web Interface*.
+     - *v5*: Uses the **API Token** found under *Settings > API/Web Interface*.
+       - **However this is not supported**
 
 ---
 
