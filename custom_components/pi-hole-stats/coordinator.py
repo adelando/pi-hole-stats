@@ -46,7 +46,7 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                         self.sid = None
                         raise UpdateFailed("Session expired")
 
-                    sys_data = await r_sys.sys_data.json()
+                    sys_data = await r_sys.json()
                     sens_data = await r_sens.json()
                     sum_data = await r_sum.json()
 
