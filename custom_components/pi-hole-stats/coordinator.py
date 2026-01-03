@@ -23,50 +23,51 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         async with aiohttp.ClientSession() as session:
             try:
-                # 1. Login/Refresh Session
+                # 1. Login/Refresh SID
                 if not self.sid:
                     auth_url = f"http://{self.host}:{self.port}/api/auth"
                     async with session.post(auth_url, json={"password": self.pw}, timeout=10) as resp:
                         auth_data = await resp.json()
                         self.sid = auth_data.get("session", {}).get("sid")
                         if not self.sid:
-                            _LOGGER.error("Authentication failed: No SID returned from Pi-hole")
-                            raise UpdateFailed("Invalid App Password")
+                            raise UpdateFailed("Pi-hole v6 Auth failed")
 
-                # 2. Fetch Data
+                # 2. Fetch from the specific endpoints you found
                 headers = {"X-FTL-SID": self.sid}
                 
-                # Fetch Summary and Host info
-                async with session.get(f"http://{self.host}:{self.port}/api/info/summary", headers=headers) as r1, \
-                           session.get(f"http://{self.host}:{self.port}/api/info/host", headers=headers) as r2:
+                # Endpoint 1: System Info (Uptime, Load, Memory)
+                # Endpoint 2: Sensors (Temperature)
+                # Endpoint 3: Summary (Queries per minute)
+                async with session.get(f"http://{self.host}:{self.port}/api/info/system", headers=headers) as r_sys, \
+                           session.get(f"http://{self.host}:{self.port}/api/info/sensors", headers=headers) as r_sens, \
+                           session.get(f"http://{self.host}:{self.port}/api/info/summary", headers=headers) as r_sum:
                     
-                    if r1.status == 401:
-                        self.sid = None # Force re-auth next time
+                    if r_sys.status == 401:
+                        self.sid = None
                         raise UpdateFailed("Session expired")
 
-                    s_data = await r1.json()
-                    h_data = await r2.json()
+                    sys_data = await r_sys.sys_data.json()
+                    sens_data = await r_sens.json()
+                    sum_data = await r_sum.json()
 
-                    # DEBUG: This will show in your HA Logs (Settings > System > Logs)
-                    _LOGGER.debug("Pi-hole Data Received: %s", s_data)
+                    # Mapping based on /api/docs structures
+                    uptime_sec = sys_data.get("uptime", 0)
+                    queries_today = sum_data.get("queries", {}).get("total", 0)
 
-                    # v6 precise paths
-                    uptime_sec = h_data.get("uptime", 0)
-                    # Note: queries is a nested dict in v6: {"queries": {"total": 123}}
-                    queries_today = s_data.get("queries", {}).get("total", 0)
-                    
-                    # Hardware stats
-                    temp = h_data.get("temperature", 0)
-                    load = h_data.get("load", [0, 0, 0])[0]
-                    ram = h_data.get("memory", {}).get("relative", 0)
-                    cpu = h_data.get("cpu", {}).get("relative", 0)
+                    # Temperature is usually in a list under 'sensors'
+                    # We'll try to find the CPU temperature sensor
+                    temp_list = sens_data.get("sensors", [])
+                    cpu_temp = 0
+                    if temp_list:
+                        # Grabs the first temperature sensor found
+                        cpu_temp = temp_list[0].get("value", 0)
 
                     return {
-                        "temperature": round(temp, 1) if temp else 0,
+                        "temperature": cpu_temp,
                         "uptime_days": round(uptime_sec / 86400, 2),
-                        "load": round(load, 2),
-                        "memory_usage": round(ram, 1),
-                        "cpu_usage": round(cpu, 1),
+                        "load": sys_data.get("load", [0, 0, 0])[0],
+                        "memory_usage": sys_data.get("memory", {}).get("relative", 0),
+                        "cpu_usage": sys_data.get("cpu", {}).get("relative", 0),
                         "queries_pm": round(queries_today / (max(uptime_sec, 60) / 60), 2)
                     }
 
