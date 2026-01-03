@@ -1,6 +1,6 @@
 # Pi-hole Statistics for Home Assistant
 
-A custom Home Assistant integration that pulls detailed system and network statistics from your Pi-hole installation. Compatible with both Pi-hole v5 (Legacy API) and Pi-hole v6 (REST API).
+A custom Home Assistant integration that pulls detailed system and network statistics from your Pi-hole installation. Compatible with Pi-hole running on v6.
 
 ## 🚀 Features
 - 📊 **Real-time Stats**: Track query volume and blocking performance.
@@ -31,7 +31,7 @@ A custom Home Assistant integration that pulls detailed system and network stati
    - **Port**: Default is `80`.
    - **App Password**: 
      - *v6*: Generate an **App Password** in Pi-hole under *Settings > Web Interface*.
-     - *v5*: Uses the **API Token** found under *Settings > API/Web Interface*.
+     - *v5*: Uses the **API Token**
        - **However this is not supported**
 
 ---
