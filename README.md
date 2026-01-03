@@ -17,7 +17,7 @@ A custom Home Assistant integration that pulls detailed system and network stati
 3. Click the **three dots** in the top right corner and select **Custom repositories**.
 4. Paste the URL of this repository: `https://github.com/adelando/pi-hole-stats`
 5. Select **Integration** as the category and click **Add**.
-6. Find **Pi-Hole Statistics** in the list and click **Download**.
+6. Find **Pi-hole Statistics** in the list and click **Download**.
 7. **Restart Home Assistant.**
 
 ---
@@ -25,7 +25,7 @@ A custom Home Assistant integration that pulls detailed system and network stati
 ## ⚙️ Configuration
 
 1. In Home Assistant, go to **Settings** -> **Devices & Services**.
-2. Click **Add Integration** and search for **Pi-Hole Statistics**.
+2. Click **Add Integration** and search for **Pi-hole Statistics**.
 3. Fill in the following fields:
    - **Host**: The IP address or hostname of your Pi-hole (e.g., `192.168.1.50`).
    - **Port**: Default is `80`.
