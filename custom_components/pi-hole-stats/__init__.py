@@ -6,11 +6,8 @@ from .coordinator import PiHoleStatsCoordinator
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Pi-Hole Statistics from a config entry."""
     
-    coordinator = PiHoleStatsCoordinator(
-        hass, 
-        host=entry.data["host"], 
-        api_key=entry.data.get("api_key")
-    )
+    # We pass the entry.data dictionary directly to the coordinator
+    coordinator = PiHoleStatsCoordinator(hass, entry.data)
 
     await coordinator.async_config_entry_first_refresh()
 
