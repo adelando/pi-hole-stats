@@ -1,0 +1,26 @@
+## Examples of cards
+
+```type: entities
+title: Pi-Hole System Stats
+entities:
+  - entity: sensor.pi_hole_stat_temperature
+    name: CPU Temperature
+    icon: mdi:thermometer
+  - entity: sensor.pi_hole_stat_uptime_days
+    name: System Uptime
+    icon: mdi:timer-outline
+  - entity: sensor.pi_hole_stat_load
+    name: System Load (1m)
+    icon: mdi:speedometer
+  - entity: sensor.pi_hole_stat_memory_usage
+    name: RAM Usage
+    icon: mdi:memory
+  - entity: sensor.pi_hole_stat_cpu_usage
+    name: CPU Usage
+    icon: mdi:cpu-64-bit
+  - entity: sensor.pi_hole_stat_queries_pm
+    name: Queries Per Minute
+    icon: mdi:chart-bell-curve
+```
+
+
