@@ -30,55 +30,56 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                 # 1. Login Logic
                 if not self.sid:
                     async with session.post(f"{base_url}/auth", json={"password": self.pw}) as resp:
-                        res_text = await resp.text()
-                        if resp.status != 200:
-                            raise UpdateFailed(f"Auth failed ({resp.status}): {res_text}")
-                        
                         auth_data = await resp.json()
                         self.sid = auth_data.get("session", {}).get("sid")
-                        
-                        # Save SID for persistence
                         new_data = dict(self.entry.data)
                         new_data["sid"] = self.sid
                         self.hass.config_entries.async_update_entry(self.entry, data=new_data)
 
                 headers = {"X-FTL-SID": self.sid, "Accept": "application/json"}
                 
-                # 2. Fetch data from verified v6 endpoints
                 async with session.get(f"{base_url}/info/system", headers=headers) as r_sys, \
                            session.get(f"{base_url}/info/sensors", headers=headers) as r_sens, \
                            session.get(f"{base_url}/stats/summary", headers=headers) as r_sum:
                     
-                    # Log raw text if not JSON to catch the 'str' error
+                    # Log raw text if the response isn't JSON to catch that 'str' error
                     if r_sys.content_type != "application/json":
-                        err_txt = await r_sys.text()
-                        _LOGGER.error("System API returned text, not JSON: %s", err_txt)
-                        self.sid = None # Reset session
-                        raise UpdateFailed(f"Non-JSON response: {err_txt}")
+                        raw_text = await r_sys.text()
+                        _LOGGER.error("Pi-hole returned text instead of JSON: %s", raw_text)
+                        self.sid = None # Reset session on error
+                        raise UpdateFailed(f"Invalid API response: {raw_text}")
 
-                    sys_data = await r_sys.json()
-                    sens_data = await r_sens.json()
-                    sum_data = await r_sum.json()
+                    sys_json = await r_sys.json()
+                    sens_json = await r_sens.json()
+                    sum_json = await r_sum.json()
 
-                    # --- DATA EXTRACTION ---
-                    uptime_sec = sys_data.get("uptime", 0)
+                    # --- DATA MAPPING (BASED ON YOUR SCHEMA) ---
+                    # Accessing nested 'system' object
+                    sys_obj = sys_json.get("system", {})
                     
-                    # Resources
-                    cpu_usage = sys_data.get("cpu", {}).get("relative", 0) * 100
-                    mem_usage = sys_data.get("memory", {}).get("relative", 0) * 100
-                    load_list = sys_data.get("load", [0, 0, 0])
+                    uptime_sec = sys_obj.get("uptime", 0)
+                    
+                    # Memory Mapping
+                    ram_data = sys_obj.get("memory", {}).get("ram", {})
+                    mem_usage = ram_data.get("%used", 0)
+                    
+                    # CPU Mapping
+                    cpu_data = sys_obj.get("cpu", {})
+                    cpu_usage = cpu_data.get("%cpu", 0)
+                    load_list = cpu_data.get("load", {}).get("raw", [0, 0, 0])
 
-                    # Sensors
-                    temp_list = sens_data.get("sensors", [])
+                    # Sensors Mapping
+                    temp_list = sens_json.get("sensors", [])
                     cpu_temp = 0
                     if temp_list and isinstance(temp_list, list):
                         cpu_temp = temp_list[0].get("value", 0)
 
                     # Summary & QPM Logic
-                    # Total queries / uptime in minutes
-                    queries_today = sum_data.get("queries", {}).get("total", 0)
-                    uptime_min = max(uptime_sec / 60, 1) # Prevent div by zero
-                    qpm = queries_today / uptime_min
+                    queries_today = sum_json.get("queries", {}).get("total", 0)
+                    
+                    # Calculate QPM: total queries / (uptime in minutes)
+                    uptime_min = uptime_sec / 60
+                    qpm = queries_today / uptime_min if uptime_min > 1 else 0
 
                     return {
                         "temperature": round(float(cpu_temp), 1),
@@ -90,5 +91,5 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     }
 
         except Exception as e:
-            _LOGGER.error("Pi-hole Update Error: %s", e)
-            raise UpdateFailed(f"Connection Error: {e}")
+            _LOGGER.error("Coordinator update failed: %s", e)
+            raise UpdateFailed(f"Error communicating with API: {e}")
