@@ -27,48 +27,55 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
 
         try:
             async with async_timeout.timeout(15):
+                # 1. Check/Refresh Session
                 if not self.sid:
                     async with session.post(f"{base_url}/auth", json={"password": self.pw}) as resp:
                         auth_data = await resp.json()
                         self.sid = auth_data.get("session", {}).get("sid")
+                        # Persist SID to config entry
                         new_data = dict(self.entry.data)
                         new_data["sid"] = self.sid
                         self.hass.config_entries.async_update_entry(self.entry, data=new_data)
 
                 headers = {"X-FTL-SID": self.sid}
                 
+                # 2. Concurrent requests to your 3 verified endpoints
                 async with session.get(f"{base_url}/info/system", headers=headers) as r_sys, \
                            session.get(f"{base_url}/info/sensors", headers=headers) as r_sens, \
-                           session.get(f"{base_url}/info/summary", headers=headers) as r_sum:
+                           session.get(f"{base_url}/stats/summary", headers=headers) as r_sum:
                     
                     if r_sys.status == 401:
                         self.sid = None
-                        raise UpdateFailed("Session expired")
+                        raise UpdateFailed("Session expired - re-authenticating next cycle")
 
                     sys_data = await r_sys.json()
                     sens_data = await r_sens.json()
                     sum_data = await r_sum.json()
 
-                    # --- REFINED DATA EXTRACTION ---
-                    # 1. System Info (nested in sys_data)
+                    # --- v6 DATA MAPPING ---
+                    
+                    # From /info/system
                     uptime_sec = sys_data.get("uptime", 0)
-                    
-                    # 2. CPU/RAM/Load (v6 often nests these in a 'system' or 'resources' key)
+                    # Pi-hole v6 returns relative usage (e.g., 0.1 = 10%)
+                    cpu_usage = sys_data.get("cpu", {}).get("relative", 0) * 100
+                    mem_usage = sys_data.get("memory", {}).get("relative", 0) * 100
                     load_list = sys_data.get("load", [0, 0, 0])
-                    cpu_usage = sys_data.get("cpu", {}).get("relative", 0) * 100 if sys_data.get("cpu") else 0
-                    mem_usage = sys_data.get("memory", {}).get("relative", 0) * 100 if sys_data.get("memory") else 0
-                    
-                    # 3. Summary (v6 nests queries inside a 'queries' object)
-                    # We check both locations just in case
-                    queries_today = sum_data.get("queries", {}).get("total", 0) or sum_data.get("queries_today", 0)
-                    
-                    # 4. Sensors
+
+                    # From /info/sensors
+                    # Usually returns a list of sensors; we search for temperature
                     temp_list = sens_data.get("sensors", [])
                     cpu_temp = 0
                     for s in temp_list:
                         if "temp" in s.get("type", "").lower() or "thermal" in s.get("name", "").lower():
                             cpu_temp = s.get("value", 0)
                             break
+                    # Fallback to first sensor if specific name not found
+                    if cpu_temp == 0 and temp_list:
+                        cpu_temp = temp_list[0].get("value", 0)
+
+                    # From /stats/summary
+                    # v6 Summary nests queries inside a 'queries' object
+                    queries_today = sum_data.get("queries", {}).get("total", 0)
 
                     return {
                         "temperature": round(float(cpu_temp), 1),
@@ -81,5 +88,5 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
 
         except Exception as e:
             self.sid = None
-            _LOGGER.error("Pi-hole data mapping error: %s", e)
-            raise UpdateFailed(f"Mapping Error: {e}")
+            _LOGGER.error("Pi-hole v6 data fetch failed: %s", e)
+            raise UpdateFailed(f"API Error: {e}")
