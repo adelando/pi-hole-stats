@@ -15,10 +15,8 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
         self.sid = entry.data.get("sid")
         
         super().__init__(
-            hass, 
-            _LOGGER, 
-            name="Pi-Hole Stats", 
-            update_interval=timedelta(seconds=10) # 10s for fast updates
+            hass, _LOGGER, name="Pi-Hole Stats", 
+            update_interval=timedelta(seconds=5) 
         )
 
     async def _async_update_data(self):
@@ -26,8 +24,7 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
         base_url = f"http://{self.host}:{self.port}/api"
 
         try:
-            async with async_timeout.timeout(5):
-                # 1. Handle Authentication
+            async with async_timeout.timeout(4):
                 if not self.sid:
                     async with session.post(f"{base_url}/auth", json={"password": self.pw}) as resp:
                         auth_data = await resp.json()
@@ -38,47 +35,45 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
 
                 headers = {"X-FTL-SID": self.sid, "Accept": "application/json"}
                 
-                # 2. Fetch from your verified endpoints
-                async with session.get(f"{base_url}/info/system", headers=headers) as r_sys, \
-                           session.get(f"{base_url}/info/sensors", headers=headers) as r_sens, \
-                           session.get(f"{base_url}/stats/summary", headers=headers) as r_sum:
-                    
-                    sys_json = await r_sys.json()
-                    sens_json = await r_sens.json()
-                    sum_json = await r_sum.json()
+                # Parallel fetch for all endpoints
+                endpoints = ["info/system", "info/sensors", "stats/summary", "network/gateway", 
+                             "info/version", "info/host", "info/ftl", "info/messages", 
+                             "stats/recent_blocked", "dns/blocking"]
+                
+                results = {}
+                for ep in endpoints:
+                    async with session.get(f"{base_url}/{ep}", headers=headers) as resp:
+                        results[ep.split('/')[-1]] = await resp.json()
 
-                    # --- v6 DATA MAPPING ---
-                    sys_obj = sys_json.get("system", {})
-                    
-                    # Hardware & Uptime
-                    uptime_sec = sys_obj.get("uptime", 1)
-                    cpu_usage = sys_obj.get("cpu", {}).get("%cpu", 0)
-                    mem_usage = sys_obj.get("memory", {}).get("ram", {}).get("%used", 0)
-                    load_list = sys_obj.get("cpu", {}).get("load", {}).get("raw", [0, 0, 0])
+                # Extract Data
+                sys = results["system"].get("system", {})
+                sens = results["sensors"].get("sensors", {})
+                ver = results["version"]
+                hst = results["host"]
+                msgs = results["messages"].get("messages", [])
 
-                    # Temperature - Mapping specifically to your schema
-                    # sens_json["sensors"]["cpu_temp"]
-                    sensors_obj = sens_json.get("sensors", {})
-                    cpu_temp = sensors_obj.get("cpu_temp", 0)
-
-                    # Queries Per Minute - Reactive Logic
-                    # Using queries from today / (uptime in minutes) 
-                    # Note: For 'Live' QPM, Pi-hole usually uses a 10-minute window, 
-                    # but this cumulative average is the standard API summary approach.
-                    queries_today = sum_json.get("queries", {}).get("total", 0)
-                    uptime_min = uptime_sec / 60
-                    qpm = queries_today / uptime_min if uptime_min > 0 else 0
-
-                    return {
-                        "temperature": round(float(cpu_temp), 1),
-                        "uptime_days": round(uptime_sec / 86400, 2),
-                        "load": round(load_list[0], 2),
-                        "memory_usage": round(mem_usage, 1),
-                        "cpu_usage": round(cpu_usage, 1),
-                        "queries_pm": round(qpm, 2)
-                    }
-
+                return {
+                    "cpu_temp": round(float(sens.get("cpu_temp", 0)), 1),
+                    "hot_limit": sens.get("hot_limit", 0),
+                    "cpu_usage": round(sys.get("cpu", {}).get("%cpu", 0), 1),
+                    "mem_usage": round(sys.get("memory", {}).get("ram", {}).get("%used", 0), 1),
+                    "load": sys.get("cpu", {}).get("load", {}).get("raw", [0])[0],
+                    "uptime_days": round(sys.get("uptime", 0) / 86400, 2),
+                    "gateway": results["gateway"].get("gateway", "N/A"),
+                    "blocking": "Active" if results["blocking"].get("blocking") else "Disabled",
+                    "active_clients": results["ftl"].get("clients", {}).get("active", 0),
+                    "msg_count": len(msgs),
+                    "msg_list": {str(m.get("id")): m.get("message") for m in msgs},
+                    "ver_core": f"{ver.get('core', {}).get('current')} (Up: {ver.get('core',{}).get('update_available')})",
+                    "ver_ftl": f"{ver.get('ftl', {}).get('current')} (Up: {ver.get('ftl',{}).get('update_available')})",
+                    "ver_web": f"{ver.get('web', {}).get('current')} (Up: {ver.get('web',{}).get('update_available')})",
+                    "host_model": hst.get("model", "Unknown"),
+                    "host_attr": {"release": hst.get("release"), "sysname": hst.get("sysname"), "version": hst.get("version")},
+                    "blocked_1": results["recent_blocked"].get("recent_blocked", ["None"]*3)[0],
+                    "blocked_2": results["recent_blocked"].get("recent_blocked", ["None"]*3)[1],
+                    "blocked_3": results["recent_blocked"].get("recent_blocked", ["None"]*3)[2],
+                    "queries_pm": round(results["summary"].get("queries", {}).get("total", 0) / (max(sys.get("uptime", 1)/60, 1)), 2)
+                }
         except Exception as e:
             self.sid = None
-            _LOGGER.error("Pi-hole update failed: %s", e)
             raise UpdateFailed(f"API Error: {e}")
