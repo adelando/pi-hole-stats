@@ -3,6 +3,8 @@ import async_timeout
 from datetime import timedelta
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.entity import DeviceInfo
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -14,6 +16,15 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
         self.pw = entry.data["api_key"]
         self.sid = entry.data.get("sid")
         
+        # Pre-define device info for all entities to use
+        self.device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+            manufacturer="Pi-hole",
+            model="FTL v6",
+            configuration_url=f"http://{self.host}:{self.port}/admin"
+        )
+
         super().__init__(
             hass, _LOGGER, name="Pi-Hole Stats", 
             update_interval=timedelta(seconds=5) 
@@ -29,13 +40,9 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     async with session.post(f"{base_url}/auth", json={"password": self.pw}) as resp:
                         auth_data = await resp.json()
                         self.sid = auth_data.get("session", {}).get("sid")
-                        new_data = dict(self.entry.data)
-                        new_data["sid"] = self.sid
-                        self.hass.config_entries.async_update_entry(self.entry, data=new_data)
-
+                
                 headers = {"X-FTL-SID": self.sid, "Accept": "application/json"}
                 
-                # Parallel fetch for all endpoints
                 endpoints = ["info/system", "info/sensors", "stats/summary", "network/gateway", 
                              "info/version", "info/host", "info/ftl", "info/messages", 
                              "stats/recent_blocked", "dns/blocking"]
@@ -45,7 +52,7 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     async with session.get(f"{base_url}/{ep}", headers=headers) as resp:
                         results[ep.split('/')[-1]] = await resp.json()
 
-                # Extract Data
+                # Extraction logic stays the same as previous step...
                 sys = results["system"].get("system", {})
                 sens = results["sensors"].get("sensors", {})
                 ver = results["version"]
@@ -76,4 +83,5 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                 }
         except Exception as e:
             self.sid = None
-            raise UpdateFailed(f"API Error: {e}")
+            _LOGGER.error("Update failed: %s", e)
+            raise UpdateFailed(e)
