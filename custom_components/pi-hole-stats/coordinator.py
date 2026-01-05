@@ -27,65 +27,61 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
 
         try:
             async with async_timeout.timeout(15):
-                # 1. Login Logic - Ensure we get JSON back
                 if not self.sid:
                     async with session.post(f"{base_url}/auth", json={"password": self.pw}) as resp:
-                        if resp.status != 200:
-                            raise UpdateFailed(f"Auth failed with status {resp.status}")
-                        
                         auth_data = await resp.json()
-                        if not isinstance(auth_data, dict):
-                            raise UpdateFailed("Auth response was not JSON")
-                            
                         self.sid = auth_data.get("session", {}).get("sid")
-                        
-                        # Save SID to the entry
                         new_data = dict(self.entry.data)
                         new_data["sid"] = self.sid
                         self.hass.config_entries.async_update_entry(self.entry, data=new_data)
 
-                # 2. Fetch Data with defensive checks
-                headers = {
-                    "X-FTL-SID": self.sid,
-                    "Accept": "application/json" # Explicitly ask for JSON
-                }
+                headers = {"X-FTL-SID": self.sid, "Accept": "application/json"}
                 
                 async with session.get(f"{base_url}/info/system", headers=headers) as r_sys, \
                            session.get(f"{base_url}/info/sensors", headers=headers) as r_sens, \
                            session.get(f"{base_url}/stats/summary", headers=headers) as r_sum:
                     
-                    # If any request is unauthorized, clear SID and bail
-                    if any(r.status == 401 for r in [r_sys, r_sens, r_sum]):
-                        self.sid = None
-                        raise UpdateFailed("Session expired - will re-auth next cycle")
-
-                    # Check for 200 OK
-                    if r_sys.status != 200:
-                        raise UpdateFailed(f"System API error: {r_sys.status}")
-
                     sys_data = await r_sys.json()
                     sens_data = await r_sens.json()
                     sum_data = await r_sum.json()
 
-                    # DEFENSIVE CHECK: Ensure we actually have dictionaries
-                    if not all(isinstance(d, dict) for d in [sys_data, sum_data]):
-                        _LOGGER.error("Pi-hole returned non-JSON data. Sys: %s, Sum: %s", sys_data, sum_data)
-                        raise UpdateFailed("API returned text instead of JSON data")
+                    # DEBUG LOGGING - Check your HA logs to see these!
+                    _LOGGER.debug("PiHole System JSON: %s", sys_data)
+                    _LOGGER.debug("PiHole Summary JSON: %s", sum_data)
 
-                    # --- DATA MAPPING ---
+                    # 1. Map System Stats
+                    # If /info/system isn't working, uptime will be 0
                     uptime_sec = sys_data.get("uptime", 0)
-                    cpu_usage = sys_data.get("cpu", {}).get("relative", 0) * 100
-                    mem_usage = sys_data.get("memory", {}).get("relative", 0) * 100
+                    
+                    # Resources (handling nested dicts)
+                    cpu_data = sys_data.get("cpu", {})
+                    mem_data = sys_data.get("memory", {})
+                    
+                    cpu_usage = cpu_data.get("relative", 0) * 100
+                    mem_usage = mem_data.get("relative", 0) * 100
                     load_list = sys_data.get("load", [0, 0, 0])
 
-                    # Sensor extraction
-                    temp_list = sens_data.get("sensors", []) if isinstance(sens_data, dict) else []
+                    # 2. Map Sensors
+                    temp_list = sens_data.get("sensors", [])
                     cpu_temp = 0
-                    if isinstance(temp_list, list) and temp_list:
-                        cpu_temp = temp_list[0].get("value", 0)
+                    if temp_list:
+                        # Try to find 'Celsius' or 'temperature' type
+                        for s in temp_list:
+                            if s.get("type") == "temperature" or "temp" in s.get("name", "").lower():
+                                cpu_temp = s.get("value", 0)
+                                break
 
-                    # Summary extraction
+                    # 3. Map Summary & Fix QPM Calculation
+                    # total queries / (uptime in minutes)
                     queries_today = sum_data.get("queries", {}).get("total", 0)
+                    
+                    uptime_minutes = uptime_sec / 60
+                    if uptime_minutes > 1:
+                        # Real QPM based on uptime
+                        qpm = queries_today / uptime_minutes
+                    else:
+                        # Fallback if uptime info is missing
+                        qpm = 0
 
                     return {
                         "temperature": round(float(cpu_temp), 1),
@@ -93,12 +89,9 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                         "load": round(load_list[0], 2) if load_list else 0,
                         "memory_usage": round(mem_usage, 1),
                         "cpu_usage": round(cpu_usage, 1),
-                        "queries_pm": round(queries_today / (max(uptime_sec, 60) / 60), 2)
+                        "queries_pm": round(qpm, 2)
                     }
 
         except Exception as e:
-            # If it's a structural error, clear SID to force a clean start
-            if "attribute 'get'" in str(e):
-                self.sid = None
-            _LOGGER.error("Pi-hole Update Error: %s", e)
-            raise UpdateFailed(f"Connection Error: {e}")
+            _LOGGER.error("Update Error: %s", e)
+            raise UpdateFailed(f"Error communicating with API: {e}")
