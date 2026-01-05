@@ -1,16 +1,14 @@
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    
-    # Get all Pi-hole entries and sort them by when they were added
     all_entries = hass.config_entries.async_entries(DOMAIN)
     all_entries.sort(key=lambda x: x.created_at if hasattr(x, 'created_at') else 0)
     
     try:
         index = all_entries.index(entry)
-        # First device = "", Second = "2_", Third = "3_"
         num_prefix = "" if index == 0 else f"{index + 1}_"
     except ValueError:
         num_prefix = ""
@@ -32,15 +30,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("blocked_3", "Recent Block 3", None, "mdi:close-octagon"),
     ]
 
-    async_add_entities([
-        PiHoleNumberedSensor(coordinator, entry, num_prefix, *s_def) 
-        for s_def in sensor_defs
-    ])
+    async_add_entities([PiHoleNumberedSensor(coordinator, entry, num_prefix, *s) for s in sensor_defs])
 
-class PiHoleNumberedSensor(SensorEntity):
+class PiHoleNumberedSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, entry, num, key, name, unit, icon):
-        self.coordinator = coordinator
-        # Result: sensor.pi_hole_stat_cpu_temp OR sensor.pi_hole_stat_2_cpu_temp
+        super().__init__(coordinator)
+        self._key = key
         self.entity_id = f"sensor.pi_hole_stat_{num}{key}"
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = name
@@ -50,13 +45,12 @@ class PiHoleNumberedSensor(SensorEntity):
 
     @property
     def native_value(self):
-        return self.coordinator.data.get(self._key if hasattr(self, '_key') else self.entity_id.split('_')[-1])
+        return self.coordinator.data.get(self._key)
 
     @property
     def extra_state_attributes(self):
-        # Keep your custom attributes logic here
         data = self.coordinator.data
-        if "cpu_temp" in self.entity_id: return {"hot_limit": data.get("hot_limit")}
-        if "host_model" in self.entity_id: return data.get("host_attr")
-        if "msg_count" in self.entity_id: return data.get("msg_list")
+        if self._key == "cpu_temp": return {"hot_limit": data.get("hot_limit")}
+        if self._key == "host_model": return data.get("host_attr")
+        if self._key == "msg_count": return data.get("msg_list")
         return None
