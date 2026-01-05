@@ -1,5 +1,9 @@
 # Pi-hole Statistics for Home Assistant
 
+## THIS PROJECT IS STILL A WORK IN PROGRESS AND NOT OFFICIALLY WORKING YET!!!
+
+
+
 A custom Home Assistant integration that pulls detailed system and network statistics from your Pi-hole installation. Compatible with Pi-hole running on v6.
 
 ## 🚀 Features
