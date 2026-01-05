@@ -1,57 +1,74 @@
+### THIS INTEGRATION IS EXTREMELY EXPERIMENTAL AND IS SUBJECT TO CHANGE OR MAY BE ABANDONED.
 
-## THIS PROJECT IS STILL A WORK IN PROGRESS AND NOT OFFICIALLY WORKING YET!!!
+# Pi-hole v6 Stats Integration
 
-# Pi-hole v6 Stats Integration for Home Assistant
-
-A high-performance custom integration for **Pi-hole v6** using the FTL REST API. This integration provides real-time monitoring of DNS sinkhole health and host hardware.
+A high-performance custom integration for **Pi-hole v6** instances. This integration uses the FTL REST API to provide real-time hardware, network, and security metrics directly in Home Assistant.
 
 ## Installation via HACS
-
-To install this integration using HACS as a custom repository:
-
-1. Open **HACS** in your Home Assistant sidebar.
-2. Click the **three dots** in the top right corner and select **Custom repositories**.
-3. Paste the GitHub URL of this repository: `https://github.com/YOUR_USERNAME/pi_hole_stats`
-4. Select **Integration** as the category and click **Add**.
-5. Find the "Pi-hole Stats" integration in HACS and click **Download**.
-6. **Restart Home Assistant**.
+1. Open **HACS** > **Integrations**.
+2. Top right menu > **Custom repositories**.
+3. Add `https://github.com/adelando/pi_hole_stats` as an **Integration**.
+4. Download and **Restart Home Assistant**.
 
 ---
 
-## Sensor Reference Table
-
-All sensors refresh every **5 seconds**. The following table lists the generated Entity IDs and their available metadata attributes.
-
-| Sensor Name | Entity ID | State Value | Attributes |
-| :--- | :--- | :--- | :--- |
-| **CPU Temperature** | `sensor.pi_hole_stat_cpu_temp` | Celsius (°C) | `hot_limit` |
-| **CPU Usage** | `sensor.pi_hole_stat_cpu_usage` | Percentage (%) | - |
-| **Memory Usage** | `sensor.pi_hole_stat_mem_usage` | Percentage (%) | - |
-| **System Load** | `sensor.pi_hole_stat_load` | 1min Average | - |
-| **Uptime** | `sensor.pi_hole_stat_uptime` | Days | - |
-| **Queries/Min** | `sensor.pi_hole_stat_qpm` | QPM | - |
-| **Network Gateway** | `sensor.pi_hole_stat_gateway` | IP Address | - |
-| **DNS Blocking** | `sensor.pi_hole_stat_blocking` | Active/Disabled | - |
-| **Active Clients** | `sensor.pi_hole_stat_clients` | Count | - |
-| **Diagnostics** | `sensor.pi_hole_stat_messages` | Msg Count | `msg_list` (ID: Text) |
-| **Core Version** | `sensor.pi_hole_stat_ver_core` | String | - |
-| **FTL Version** | `sensor.pi_hole_stat_ver_ftl` | String | - |
-| **Web Version** | `sensor.pi_hole_stat_ver_web` | String | - |
-| **Host Model** | `sensor.pi_hole_stat_host_model` | Model Name | `release`, `sysname`, `version` |
-| **Recent Block 1** | `sensor.pi_hole_stat_blocked_1` | Domain Name | - |
-| **Recent Block 2** | `sensor.pi_hole_stat_blocked_2` | Domain Name | - |
-| **Recent Block 3** | `sensor.pi_hole_stat_blocked_3` | Domain Name | - |
+## Entity Numbering Logic
+To support multiple Pi-hole installations, this integration automatically numbers Entity IDs based on the order they were added:
+- **Installation 1**: `sensor.pi_hole_stat_[key]`
+- **Installation 2**: `sensor.pi_hole_stat_2_[key]`
+- **Installation 3**: `sensor.pi_hole_stat_3_[key]`
 
 ---
 
-## Technical Details
+## Available Entities
 
-- **Poll Rate**: 5 Seconds
-- **Auth**: App Password (SID based)
-- **Requirements**: Pi-hole v6.0+
+### 1. Update Entities (Version Tracking)
+These entities replace standard sensors for versioning. They will notify you via the Home Assistant UI when a new version is released by the Pi-hole team.
 
-### Attribute Drill-down
-- **Diagnostic Messages (`msg_list`)**: Displays the Message ID as the key and the human-readable header as the value.
-- **Host Model**: Provides full OS details including kernel version and release branch.
-- **CPU Temp**: Includes the `hot_limit` attribute to help monitor thermal throttling thresholds.
-    name: Queries Per Minute
+| Name | Entity ID Example (Device 1) | Attributes |
+| :--- | :--- | :--- |
+| **Pi-hole Core Update** | `update.pi_hole_core_update` | Release Summary, Remote Link |
+| **Pi-hole FTL Update** | `update.pi_hole_ftl_update` | Release Summary, Remote Link |
+| **Pi-hole Web Update** | `update.pi_hole_web_interface_update` | Release Summary, Remote Link |
+
+### 2. Sensor Entities (Live Stats)
+Refreshes every **5 seconds**.
+
+| Category | Sensor Name | Entity ID Example (Device 1) | Unit | Attributes |
+| :--- | :--- | :--- | :--- | :--- |
+| **Hardware** | **CPU Temperature** | `sensor.pi_hole_stat_cpu_temp` | °C | `hot_limit` |
+| **Hardware** | **CPU Usage** | `sensor.pi_hole_stat_cpu_usage` | % | - |
+| **Hardware** | **Memory Usage** | `sensor.pi_hole_stat_mem_usage` | % | - |
+| **Hardware** | **System Load** | `sensor.pi_hole_stat_load` | L | - |
+| **Hardware** | **Uptime** | `sensor.pi_hole_stat_uptime_days` | days | - |
+| **Hardware** | **Host Model** | `sensor.pi_hole_stat_host_model` | - | `release`, `sysname`, `version` |
+| **Network** | **QPM** | `sensor.pi_hole_stat_queries_pm` | qpm | - |
+| **Network** | **Network Gateway** | `sensor.pi_hole_stat_gateway` | IP | - |
+| **Network** | **Active Clients** | `sensor.pi_hole_stat_active_clients` | count | - |
+| **Security** | **DNS Blocking** | `sensor.pi_hole_stat_blocking` | - | - |
+| **Security** | **Recent Block 1** | `sensor.pi_hole_stat_blocked_1` | domain | - |
+| **Security** | **Recent Block 2** | `sensor.pi_hole_stat_blocked_2` | domain | - |
+| **Security** | **Recent Block 3** | `sensor.pi_hole_stat_blocked_3` | domain | - |
+| **System** | **Diagnostics** | `sensor.pi_hole_stat_msg_count` | msgs | `msg_list` (Alert IDs & Text) |
+
+---
+
+## Detailed Attribute Information
+
+### Diagnostic Messages (`msg_list`)
+The `sensor.pi_hole_stat_msg_count` entity contains a list of all active Pi-hole diagnostic alerts in its attributes.
+* **Key**: The unique ID of the message.
+* **Value**: The plain-text header/description provided by FTL.
+
+### Host Model Info
+The `sensor.pi_hole_stat_host_model` provides deep OS insights:
+* `release`: OS version (e.g., "12").
+* `sysname`: System kernel type (e.g., "Linux").
+* `version`: Specific build or kernel version.
+
+---
+
+## Configuration
+- **Polling Rate**: 5 Seconds.
+- **Connection**: Requires an **App Password** from Pi-hole v6 (Settings > Web Interface > Expert Mode).
+- **Grouping**: All entities are automatically grouped by "Device" in the Home Assistant Settings for easy management.
