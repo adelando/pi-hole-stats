@@ -1,69 +1,51 @@
-from homeassistant.components.sensor import (
-    SensorEntity,
-    SensorDeviceClass,
-    SensorStateClass,
-)
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import dt as dt_util
-from .const import DOMAIN
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up Pi-Hole sensors based on a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data["pi_hole_stats"][entry.entry_id]
     
-    # name, data_key, unit, device_class
-    sensor_types = [
-        ("Temperature", "temperature", "°C", SensorDeviceClass.TEMPERATURE),
-        ("Uptime", "uptime_days", "days", None),
-        ("Load Percentage", "load", "%", None),
-        ("RAM Usage", "memory_usage", "%", None),
-        ("CPU Usage", "cpu_usage", "%", None),
-        ("Queries per Minute", "queries_pm", "qpm", None),
+    # Define all sensors in one go
+    sensors = [
+        PiHoleSensor(coordinator, "cpu_temp", "CPU Temperature", "°C", "mdi:thermometer"),
+        PiHoleSensor(coordinator, "cpu_usage", "CPU Usage", "%", "mdi:cpu-64-bit"),
+        PiHoleSensor(coordinator, "mem_usage", "Memory Usage", "%", "mdi:memory"),
+        PiHoleSensor(coordinator, "load", "System Load", None, "mdi:speedometer"),
+        PiHoleSensor(coordinator, "uptime_days", "Uptime", "days", "mdi:timer-outline"),
+        PiHoleSensor(coordinator, "queries_pm", "Queries/Min", "qpm", "mdi:chart-line"),
+        PiHoleSensor(coordinator, "gateway", "Network Gateway", None, "mdi:router-wireless"),
+        PiHoleSensor(coordinator, "blocking", "DNS Blocking", None, "mdi:shield-check"),
+        PiHoleSensor(coordinator, "active_clients", "Active Clients", "clients", "mdi:account-group"),
+        PiHoleSensor(coordinator, "msg_count", "Diagnostic Messages", "msgs", "mdi:alert-circle-outline"),
+        PiHoleSensor(coordinator, "ver_core", "Core Version", None, "mdi:github"),
+        PiHoleSensor(coordinator, "ver_ftl", "FTL Version", None, "mdi:chip"),
+        PiHoleSensor(coordinator, "ver_web", "Web Version", None, "mdi:web"),
+        PiHoleSensor(coordinator, "host_model", "Host Model", None, "mdi:raspberry-pi"),
+        PiHoleSensor(coordinator, "blocked_1", "Recent Block 1", None, "mdi:close-octagon"),
+        PiHoleSensor(coordinator, "blocked_2", "Recent Block 2", None, "mdi:close-octagon"),
+        PiHoleSensor(coordinator, "blocked_3", "Recent Block 3", None, "mdi:close-octagon"),
     ]
-    
-    async_add_entities(
-        [PiHoleStatSensor(coordinator, name, key, unit, dev_class, entry) 
-         for name, key, unit, dev_class in sensor_types]
-    )
+    async_add_entities(sensors)
 
-class PiHoleStatSensor(CoordinatorEntity, SensorEntity):
-    """Representation of a Pi-Hole Statistics sensor."""
-    _attr_has_entity_name = True
-
-    def __init__(self, coordinator, name, data_key, unit, device_class, entry):
-        """Initialize the sensor."""
+class PiHoleSensor(CoordinatorEntity, SensorEntity):
+    def __init__(self, coordinator, key, name, unit, icon):
         super().__init__(coordinator)
-        self._data_key = data_key
-        self._attr_name = name
+        self._key = key
+        self._attr_name = f"Pi-hole {name}"
         self._attr_native_unit_of_measurement = unit
-        self._attr_device_class = device_class
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        
-        # Unique ID prevents duplicates
-        self._attr_unique_id = f"pi_hole_stat_{data_key}_{entry.entry_id}"
-        self.entity_id = f"sensor.pi_hole_stat_{data_key}"
-
-        # Grouping entities into a single Device in the UI
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Pi-Hole Statistics",
-            "manufacturer": "Pi-hole",
-            "model": "FTL v6.0+",
-            "configuration_url": f"http://{coordinator.host}:{coordinator.port}",
-        }
+        self._attr_icon = icon
+        self._attr_unique_id = f"pihole_{key}_{coordinator.entry.entry_id}"
 
     @property
     def native_value(self):
-        """Return the state of the sensor from the coordinator data."""
-        if self.coordinator.data is None:
-            return None
-        return self.coordinator.data.get(self._data_key)
+        return self.coordinator.data.get(self._key)
 
     @property
     def extra_state_attributes(self):
-        """Return entity specific state attributes."""
-        return {
-            "last_updated": dt_util.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "host": self.coordinator.host,
-            "status": "online" if self.coordinator.last_update_success else "offline"
-        }
+        # Specific logic for attribute-heavy sensors
+        if self._key == "cpu_temp":
+            return {"hot_limit": self.coordinator.data.get("hot_limit")}
+        if self._key == "host_model":
+            return self.coordinator.data.get("host_attr")
+        if self._key == "msg_count":
+            return self.coordinator.data.get("msg_list")
+        return None
