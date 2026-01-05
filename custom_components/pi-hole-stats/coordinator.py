@@ -27,54 +27,64 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
 
         try:
             async with async_timeout.timeout(15):
-                # 1. Check/Refresh Session
+                # 1. Login Logic - Ensure we get JSON back
                 if not self.sid:
                     async with session.post(f"{base_url}/auth", json={"password": self.pw}) as resp:
+                        if resp.status != 200:
+                            raise UpdateFailed(f"Auth failed with status {resp.status}")
+                        
                         auth_data = await resp.json()
+                        if not isinstance(auth_data, dict):
+                            raise UpdateFailed("Auth response was not JSON")
+                            
                         self.sid = auth_data.get("session", {}).get("sid")
-                        # Persist SID to config entry
+                        
+                        # Save SID to the entry
                         new_data = dict(self.entry.data)
                         new_data["sid"] = self.sid
                         self.hass.config_entries.async_update_entry(self.entry, data=new_data)
 
-                headers = {"X-FTL-SID": self.sid}
+                # 2. Fetch Data with defensive checks
+                headers = {
+                    "X-FTL-SID": self.sid,
+                    "Accept": "application/json" # Explicitly ask for JSON
+                }
                 
-                # 2. Concurrent requests to your 3 verified endpoints
                 async with session.get(f"{base_url}/info/system", headers=headers) as r_sys, \
                            session.get(f"{base_url}/info/sensors", headers=headers) as r_sens, \
                            session.get(f"{base_url}/stats/summary", headers=headers) as r_sum:
                     
-                    if r_sys.status == 401:
+                    # If any request is unauthorized, clear SID and bail
+                    if any(r.status == 401 for r in [r_sys, r_sens, r_sum]):
                         self.sid = None
-                        raise UpdateFailed("Session expired - re-authenticating next cycle")
+                        raise UpdateFailed("Session expired - will re-auth next cycle")
+
+                    # Check for 200 OK
+                    if r_sys.status != 200:
+                        raise UpdateFailed(f"System API error: {r_sys.status}")
 
                     sys_data = await r_sys.json()
                     sens_data = await r_sens.json()
                     sum_data = await r_sum.json()
 
-                    # --- v6 DATA MAPPING ---
-                    
-                    # From /info/system
+                    # DEFENSIVE CHECK: Ensure we actually have dictionaries
+                    if not all(isinstance(d, dict) for d in [sys_data, sum_data]):
+                        _LOGGER.error("Pi-hole returned non-JSON data. Sys: %s, Sum: %s", sys_data, sum_data)
+                        raise UpdateFailed("API returned text instead of JSON data")
+
+                    # --- DATA MAPPING ---
                     uptime_sec = sys_data.get("uptime", 0)
-                    # Pi-hole v6 returns relative usage (e.g., 0.1 = 10%)
                     cpu_usage = sys_data.get("cpu", {}).get("relative", 0) * 100
                     mem_usage = sys_data.get("memory", {}).get("relative", 0) * 100
                     load_list = sys_data.get("load", [0, 0, 0])
 
-                    # From /info/sensors
-                    # Usually returns a list of sensors; we search for temperature
-                    temp_list = sens_data.get("sensors", [])
+                    # Sensor extraction
+                    temp_list = sens_data.get("sensors", []) if isinstance(sens_data, dict) else []
                     cpu_temp = 0
-                    for s in temp_list:
-                        if "temp" in s.get("type", "").lower() or "thermal" in s.get("name", "").lower():
-                            cpu_temp = s.get("value", 0)
-                            break
-                    # Fallback to first sensor if specific name not found
-                    if cpu_temp == 0 and temp_list:
+                    if isinstance(temp_list, list) and temp_list:
                         cpu_temp = temp_list[0].get("value", 0)
 
-                    # From /stats/summary
-                    # v6 Summary nests queries inside a 'queries' object
+                    # Summary extraction
                     queries_today = sum_data.get("queries", {}).get("total", 0)
 
                     return {
@@ -87,6 +97,8 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     }
 
         except Exception as e:
-            self.sid = None
-            _LOGGER.error("Pi-hole v6 data fetch failed: %s", e)
-            raise UpdateFailed(f"API Error: {e}")
+            # If it's a structural error, clear SID to force a clean start
+            if "attribute 'get'" in str(e):
+                self.sid = None
+            _LOGGER.error("Pi-hole Update Error: %s", e)
+            raise UpdateFailed(f"Connection Error: {e}")
