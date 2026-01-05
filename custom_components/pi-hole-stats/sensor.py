@@ -1,20 +1,19 @@
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers import entity_registry as er
 from .const import DOMAIN
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     
-    # Determine the device number
+    # Get all Pi-hole entries and sort them by when they were added
     all_entries = hass.config_entries.async_entries(DOMAIN)
-    # Sort by created_at to keep numbers consistent
-    all_entries.sort(key=lambda x: x.entry_id) 
+    all_entries.sort(key=lambda x: x.created_at if hasattr(x, 'created_at') else 0)
     
     try:
         index = all_entries.index(entry)
-        device_num = "" if index == 0 else f"{index + 1}_"
+        # First device = "", Second = "2_", Third = "3_"
+        num_prefix = "" if index == 0 else f"{index + 1}_"
     except ValueError:
-        device_num = ""
+        num_prefix = ""
 
     sensor_defs = [
         ("cpu_temp", "CPU Temperature", "°C", "mdi:thermometer"),
@@ -34,7 +33,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     ]
 
     async_add_entities([
-        PiHoleNumberedSensor(coordinator, entry, device_num, *s_def) 
+        PiHoleNumberedSensor(coordinator, entry, num_prefix, *s_def) 
         for s_def in sensor_defs
     ])
 
@@ -48,3 +47,16 @@ class PiHoleNumberedSensor(SensorEntity):
         self._attr_native_unit_of_measurement = unit
         self._attr_icon = icon
         self._attr_device_info = coordinator.device_info
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get(self._key if hasattr(self, '_key') else self.entity_id.split('_')[-1])
+
+    @property
+    def extra_state_attributes(self):
+        # Keep your custom attributes logic here
+        data = self.coordinator.data
+        if "cpu_temp" in self.entity_id: return {"hot_limit": data.get("hot_limit")}
+        if "host_model" in self.entity_id: return data.get("host_attr")
+        if "msg_count" in self.entity_id: return data.get("msg_list")
+        return None
