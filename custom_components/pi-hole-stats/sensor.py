@@ -1,21 +1,4 @@
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .const import DOMAIN
-
-async def async_setup_entry(hass, entry, async_add_entities):
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    
-    # Logic to handle multiple Pi-hole instances numbering
-    all_entries = hass.config_entries.async_entries(DOMAIN)
-    all_entries.sort(key=lambda x: x.created_at if hasattr(x, 'created_at') else 0)
-    
-    try:
-        index = all_entries.index(entry)
-        num_prefix = "" if index == 0 else f"{index + 1}_"
-    except ValueError:
-        num_prefix = ""
-
-    # Define all sensors with their respective keys, names, units, and icons
+# Inside sensor.py -> sensor_defs
     sensor_defs = [
         ("cpu_temp", "CPU Temperature", "°C", "mdi:thermometer"),
         ("cpu_usage", "CPU Usage", "%", "mdi:cpu-64-bit"),
@@ -28,45 +11,28 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("active_clients", "Active Clients", "clients", "mdi:account-group"),
         ("msg_count", "Diagnostics", "msgs", "mdi:alert-circle-outline"),
         ("host_model", "Host Model", None, "mdi:raspberry-pi"),
-        ("blocked_1", "Recent Block 1", None, "mdi:close-octagon"),
-        ("blocked_2", "Recent Block 2", None, "mdi:close-octagon"),
-        ("blocked_3", "Recent Block 3", None, "mdi:close-octagon"),
+        # New Consolidated Sensor
+        ("recent_blocked", "Recent Blocks", None, "mdi:close-octagon"),
     ]
 
-    async_add_entities([
-        PiHoleNumberedSensor(coordinator, entry, num_prefix, *s_def) 
-        for s_def in sensor_defs
-    ])
-
-class PiHoleNumberedSensor(CoordinatorEntity, SensorEntity):
-    """Representation of a Pi-hole sensor."""
-
-    def __init__(self, coordinator, entry, num, key, name, unit, icon):
-        """Initialize the sensor."""
-        super().__init__(coordinator)
-        self._key = key
-        # Entity ID follows your specific sensor.pi_hole_stat_<device number>_key format
-        self.entity_id = f"sensor.pi_hole_stat_{num}{key}"
-        self._attr_unique_id = f"{entry.entry_id}_{key}"
-        self._attr_name = name
-        self._attr_native_unit_of_measurement = unit
-        self._attr_icon = icon
-        self._attr_device_info = coordinator.device_info
-
+# Inside PiHoleNumberedSensor -> native_value
     @property
     def native_value(self):
-        """Return the state of the sensor."""
-        return self.coordinator.data.get(self._key)
+        val = self.coordinator.data.get(self._key)
+        if self._key == "recent_blocked":
+            # State shows the most recent single domain blocked
+            return val[0] if val else "None"
+        return val
 
+# Inside PiHoleNumberedSensor -> extra_state_attributes
     @property
     def extra_state_attributes(self):
-        """Return the state attributes."""
         data = self.coordinator.data
-        if self._key == "cpu_temp":
-            return {"hot_limit": data.get("hot_limit")}
-        if self._key == "host_model":
-            return data.get("host_attr")
+        if self._key == "recent_blocked":
+            # List all domains in the attributes
+            return {"blocked_domains": data.get("recent_blocked", [])}
         if self._key == "msg_count":
-            # This ensures the diagnostic messages are visible in the sensor attributes
-            return {"alerts": data.get("msg_list")}
+            return {"alerts": data.get("msg_list", {})}
+        if self._key == "host_model":
+            return data.get("host_attr", {})
         return None
