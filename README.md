@@ -3,76 +3,55 @@
 
 # Pi-hole v6 Stats Integration for Home Assistant
 
-A custom Home Assistant integration designed specifically for **Pi-hole v6** using the high-performance FTL REST API. This integration provides real-time monitoring of your DNS sinkhole and host hardware with a high-frequency refresh rate.
+A high-performance custom integration for **Pi-hole v6** using the FTL REST API. This integration provides real-time monitoring of DNS sinkhole health and host hardware.
 
-## Features
-- **High-Frequency Updates**: Configured for a 5-second polling interval.
-- **Pi-hole v6 Native**: Uses the `/api` endpoints and `X-FTL-SID` session authentication.
-- **Comprehensive Hardware Monitoring**: CPU, RAM, Load, and Temperature.
-- **Diagnostic Insights**: Live list of Pi-hole system messages.
-- **Security Visibility**: Live tracking of the 3 most recently blocked domains.
+## Installation via HACS
 
----
+To install this integration using HACS as a custom repository:
 
-## Available Sensors
-
-| Sensor Name | Description | State Value |
-| :--- | :--- | :--- |
-| **CPU Temperature** | Pi hardware thermal sensor | Celsius (°C) |
-| **CPU Usage** | Current CPU load percentage | Percentage (%) |
-| **Memory Usage** | Current RAM utilization | Percentage (%) |
-| **System Load** | 1-minute load average | Float |
-| **Uptime** | Days since last host boot | Days |
-| **Queries/Min** | Daily average queries per minute | QPM |
-| **Network Gateway** | Primary network gateway IP | IP Address |
-| **DNS Blocking** | Global blocking status | Active / Disabled |
-| **Active Clients** | Unique clients seen in last 24h | Count |
-| **Diagnostic Messages** | Count of system alerts | Count |
-| **Core Version** | Installed version of Pi-hole Core | String |
-| **FTL Version** | Installed version of FTL Engine | String |
-| **Web Version** | Installed version of Web Interface | String |
-| **Host Model** | Hardware model of the machine | String |
-| **Recent Block 1** | Most recently blocked domain | Domain Name |
-| **Recent Block 2** | Second most recently blocked domain | Domain Name |
-| **Recent Block 3** | Third most recently blocked domain | Domain Name |
+1. Open **HACS** in your Home Assistant sidebar.
+2. Click the **three dots** in the top right corner and select **Custom repositories**.
+3. Paste the GitHub URL of this repository: `https://github.com/YOUR_USERNAME/pi_hole_stats`
+4. Select **Integration** as the category and click **Add**.
+5. Find the "Pi-hole Stats" integration in HACS and click **Download**.
+6. **Restart Home Assistant**.
 
 ---
 
-## Sensor Attributes
+## Sensor Reference Table
 
-To keep the dashboard clean, secondary data is stored within the attributes of the following sensors:
+All sensors refresh every **5 seconds**. The following table lists the generated Entity IDs and their available metadata attributes.
 
-### Pi-hole CPU Temperature
-- `hot_limit`: The thermal ceiling (Max Temp) for the CPU.
-
-### Pi-hole Host Model
-- `release`: Operating system release (e.g., "12").
-- `sysname`: System type (e.g., "Linux").
-- `version`: Specific kernel/OS build version.
-
-### Pi-hole Diagnostic Messages
-- `msg_list`: A dictionary of all current system messages.
-    - **Key**: Message ID
-    - **Value**: Plain text header/description of the message.
+| Sensor Name | Entity ID | State Value | Attributes |
+| :--- | :--- | :--- | :--- |
+| **CPU Temperature** | `sensor.pi_hole_stat_cpu_temp` | Celsius (°C) | `hot_limit` |
+| **CPU Usage** | `sensor.pi_hole_stat_cpu_usage` | Percentage (%) | - |
+| **Memory Usage** | `sensor.pi_hole_stat_mem_usage` | Percentage (%) | - |
+| **System Load** | `sensor.pi_hole_stat_load` | 1min Average | - |
+| **Uptime** | `sensor.pi_hole_stat_uptime` | Days | - |
+| **Queries/Min** | `sensor.pi_hole_stat_qpm` | QPM | - |
+| **Network Gateway** | `sensor.pi_hole_stat_gateway` | IP Address | - |
+| **DNS Blocking** | `sensor.pi_hole_stat_blocking` | Active/Disabled | - |
+| **Active Clients** | `sensor.pi_hole_stat_clients` | Count | - |
+| **Diagnostics** | `sensor.pi_hole_stat_messages` | Msg Count | `msg_list` (ID: Text) |
+| **Core Version** | `sensor.pi_hole_stat_ver_core` | String | - |
+| **FTL Version** | `sensor.pi_hole_stat_ver_ftl` | String | - |
+| **Web Version** | `sensor.pi_hole_stat_ver_web` | String | - |
+| **Host Model** | `sensor.pi_hole_stat_host_model` | Model Name | `release`, `sysname`, `version` |
+| **Recent Block 1** | `sensor.pi_hole_stat_blocked_1` | Domain Name | - |
+| **Recent Block 2** | `sensor.pi_hole_stat_blocked_2` | Domain Name | - |
+| **Recent Block 3** | `sensor.pi_hole_stat_blocked_3` | Domain Name | - |
 
 ---
-
-## Requirements & Setup
-
-1. **Pi-hole Version**: Must be running v6.0 or higher.
-2. **App Password**: 
-   - Navigate to your Pi-hole Web UI.
-   - Go to **Settings > Web Interface**.
-   - Enable **Expert Mode**.
-   - Select **Configure App Password** and generate a long-form password.
-3. **Installation**: 
-   - Place the files in `/config/custom_components/pi_hole_stats/`.
-   - Restart Home Assistant.
-   - Add the integration via **Settings > Devices & Services**.
 
 ## Technical Details
-- **Refresh Rate**: 5 Seconds.
-- **Timeout**: 4 Seconds (Optimized for fast polling).
-- **Authentication**: Session-based (`/api/auth`).
-  - entity: sensor.pi_hole_stat_queries_pm
+
+- **Poll Rate**: 5 Seconds
+- **Auth**: App Password (SID based)
+- **Requirements**: Pi-hole v6.0+
+
+### Attribute Drill-down
+- **Diagnostic Messages (`msg_list`)**: Displays the Message ID as the key and the human-readable header as the value.
+- **Host Model**: Provides full OS details including kernel version and release branch.
+- **CPU Temp**: Includes the `hot_limit` attribute to help monitor thermal throttling thresholds.
     name: Queries Per Minute
