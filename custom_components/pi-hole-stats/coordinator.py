@@ -27,26 +27,14 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
 
         try:
             async with async_timeout.timeout(15):
-                # 1. Login ONLY if we don't have a saved SID
                 if not self.sid:
                     async with session.post(f"{base_url}/auth", json={"password": self.pw}) as resp:
-                        # Safety check: if response isn't JSON, don't crash
-                        if resp.content_type != "application/json":
-                            text_err = await resp.text()
-                            raise UpdateFailed(f"Auth failed: Expected JSON, got: {text_err}")
-                        
                         auth_data = await resp.json()
                         self.sid = auth_data.get("session", {}).get("sid")
-                        
-                        if not self.sid:
-                            raise UpdateFailed("Auth failed: Invalid App Password")
-                        
-                        # Save SID to Config Entry
                         new_data = dict(self.entry.data)
                         new_data["sid"] = self.sid
                         self.hass.config_entries.async_update_entry(self.entry, data=new_data)
 
-                # 2. Fetch Data
                 headers = {"X-FTL-SID": self.sid}
                 
                 async with session.get(f"{base_url}/info/system", headers=headers) as r_sys, \
@@ -55,41 +43,43 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     
                     if r_sys.status == 401:
                         self.sid = None
-                        new_data = dict(self.entry.data)
-                        new_data.pop("sid", None)
-                        self.hass.config_entries.async_update_entry(self.entry, data=new_data)
                         raise UpdateFailed("Session expired")
-                    
-                    # Ensure all responses are valid JSON
-                    if any(r.content_type != "application/json" for r in [r_sys, r_sens, r_sum]):
-                        raise UpdateFailed("Pi-hole returned non-JSON data (Check security settings)")
 
                     sys_data = await r_sys.json()
                     sens_data = await r_sens.json()
                     sum_data = await r_sum.json()
 
-                    # --- SAFETY CHECKS ---
-                    # Ensure the response is a dictionary before calling .get()
-                    if not isinstance(sys_data, dict) or not isinstance(sum_data, dict):
-                        raise UpdateFailed("Received malformed JSON from Pi-hole")
-
+                    # --- REFINED DATA EXTRACTION ---
+                    # 1. System Info (nested in sys_data)
                     uptime_sec = sys_data.get("uptime", 0)
-                    queries_today = sum_data.get("queries", {}).get("total", 0)
                     
-                    temp_list = sens_data.get("sensors", []) if isinstance(sens_data, dict) else []
+                    # 2. CPU/RAM/Load (v6 often nests these in a 'system' or 'resources' key)
+                    load_list = sys_data.get("load", [0, 0, 0])
+                    cpu_usage = sys_data.get("cpu", {}).get("relative", 0) * 100 if sys_data.get("cpu") else 0
+                    mem_usage = sys_data.get("memory", {}).get("relative", 0) * 100 if sys_data.get("memory") else 0
+                    
+                    # 3. Summary (v6 nests queries inside a 'queries' object)
+                    # We check both locations just in case
+                    queries_today = sum_data.get("queries", {}).get("total", 0) or sum_data.get("queries_today", 0)
+                    
+                    # 4. Sensors
+                    temp_list = sens_data.get("sensors", [])
                     cpu_temp = 0
-                    if temp_list and isinstance(temp_list, list):
-                        cpu_temp = temp_list[0].get("value", 0)
+                    for s in temp_list:
+                        if "temp" in s.get("type", "").lower() or "thermal" in s.get("name", "").lower():
+                            cpu_temp = s.get("value", 0)
+                            break
 
                     return {
                         "temperature": round(float(cpu_temp), 1),
                         "uptime_days": round(uptime_sec / 86400, 2),
-                        "load": sys_data.get("load", [0, 0, 0])[0],
-                        "memory_usage": sys_data.get("memory", {}).get("relative", 0),
-                        "cpu_usage": sys_data.get("cpu", {}).get("relative", 0),
+                        "load": round(load_list[0], 2) if load_list else 0,
+                        "memory_usage": round(mem_usage, 1),
+                        "cpu_usage": round(cpu_usage, 1),
                         "queries_pm": round(queries_today / (max(uptime_sec, 60) / 60), 2)
                     }
 
         except Exception as e:
-            _LOGGER.error("Pi-hole update failed: %s", e)
-            raise UpdateFailed(f"Connection Error: {e}")
+            self.sid = None
+            _LOGGER.error("Pi-hole data mapping error: %s", e)
+            raise UpdateFailed(f"Mapping Error: {e}")
