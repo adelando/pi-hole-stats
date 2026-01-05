@@ -7,5 +7,5 @@
   "iot_class": "local_polling",
   "platforms": ["sensor", "update"],
   "issue_tracker": "https://github.com/adelando/pi-hole-stats/issues",
-  "version": "0.23"
+  "version": "0.24"
 }
