@@ -16,7 +16,6 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
         self.pw = entry.data["api_key"]
         self.sid = entry.data.get("sid")
         
-        # Pre-define device info for all entities to use
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
@@ -42,22 +41,21 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                         self.sid = auth_data.get("session", {}).get("sid")
                 
                 headers = {"X-FTL-SID": self.sid, "Accept": "application/json"}
+                endpoints = ["system", "sensors", "summary", "gateway", "version", "host", "ftl", "messages", "recent_blocked", "blocking"]
                 
-                endpoints = ["info/system", "info/sensors", "stats/summary", "network/gateway", 
-                             "info/version", "info/host", "info/ftl", "info/messages", 
-                             "stats/recent_blocked", "dns/blocking"]
-                
-                results = {}
+                res = {}
                 for ep in endpoints:
-                    async with session.get(f"{base_url}/{ep}", headers=headers) as resp:
-                        results[ep.split('/')[-1]] = await resp.json()
+                    path = f"info/{ep}" if ep not in ["summary", "recent_blocked", "blocking"] else f"stats/{ep}"
+                    if ep == "blocking": path = "dns/blocking"
+                    if ep == "gateway": path = "network/gateway"
+                    
+                    async with session.get(f"{base_url}/{path}", headers=headers) as resp:
+                        res[ep] = await resp.json()
 
-                # Extraction logic stays the same as previous step...
-                sys = results["system"].get("system", {})
-                sens = results["sensors"].get("sensors", {})
-                ver = results["version"]
-                hst = results["host"]
-                msgs = results["messages"].get("messages", [])
+                sys = res["system"].get("system", {})
+                sens = res["sensors"].get("sensors", {})
+                ver = res["version"]
+                hst = res["host"]
 
                 return {
                     "cpu_temp": round(float(sens.get("cpu_temp", 0)), 1),
@@ -66,22 +64,24 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     "mem_usage": round(sys.get("memory", {}).get("ram", {}).get("%used", 0), 1),
                     "load": sys.get("cpu", {}).get("load", {}).get("raw", [0])[0],
                     "uptime_days": round(sys.get("uptime", 0) / 86400, 2),
-                    "gateway": results["gateway"].get("gateway", "N/A"),
-                    "blocking": "Active" if results["blocking"].get("blocking") else "Disabled",
-                    "active_clients": results["ftl"].get("clients", {}).get("active", 0),
-                    "msg_count": len(msgs),
-                    "msg_list": {str(m.get("id")): m.get("message") for m in msgs},
-                    "ver_core": f"{ver.get('core', {}).get('current')} (Up: {ver.get('core',{}).get('update_available')})",
-                    "ver_ftl": f"{ver.get('ftl', {}).get('current')} (Up: {ver.get('ftl',{}).get('update_available')})",
-                    "ver_web": f"{ver.get('web', {}).get('current')} (Up: {ver.get('web',{}).get('update_available')})",
+                    "gateway": res["gateway"].get("gateway", "N/A"),
+                    "blocking": "Active" if res["blocking"].get("blocking") else "Disabled",
+                    "active_clients": res["ftl"].get("clients", {}).get("active", 0),
+                    "msg_count": len(res["messages"].get("messages", [])),
+                    "msg_list": {str(m.get("id")): m.get("message") for m in res["messages"].get("messages", [])},
+                    "ver_core": ver.get('core', {}).get('current'),
+                    "up_core": ver.get('core', {}).get('update_available'),
+                    "ver_ftl": ver.get('ftl', {}).get('current'),
+                    "up_ftl": ver.get('ftl', {}).get('update_available'),
+                    "ver_web": ver.get('web', {}).get('current'),
+                    "up_web": ver.get('web', {}).get('update_available'),
                     "host_model": hst.get("model", "Unknown"),
                     "host_attr": {"release": hst.get("release"), "sysname": hst.get("sysname"), "version": hst.get("version")},
-                    "blocked_1": results["recent_blocked"].get("recent_blocked", ["None"]*3)[0],
-                    "blocked_2": results["recent_blocked"].get("recent_blocked", ["None"]*3)[1],
-                    "blocked_3": results["recent_blocked"].get("recent_blocked", ["None"]*3)[2],
-                    "queries_pm": round(results["summary"].get("queries", {}).get("total", 0) / (max(sys.get("uptime", 1)/60, 1)), 2)
+                    "blocked_1": res["recent_blocked"].get("recent_blocked", ["None"]*3)[0],
+                    "blocked_2": res["recent_blocked"].get("recent_blocked", ["None"]*3)[1],
+                    "blocked_3": res["recent_blocked"].get("recent_blocked", ["None"]*3)[2],
+                    "queries_pm": round(res["summary"].get("queries", {}).get("total", 0) / (max(sys.get("uptime", 1)/60, 1)), 2)
                 }
         except Exception as e:
             self.sid = None
-            _LOGGER.error("Update failed: %s", e)
-            raise UpdateFailed(e)
+            raise UpdateFailed(f"Error communicating with API: {e}")
