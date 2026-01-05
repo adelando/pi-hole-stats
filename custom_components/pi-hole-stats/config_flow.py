@@ -1,49 +1,59 @@
 import voluptuous as vol
-import aiohttp
-import async_timeout
 from homeassistant import config_entries
-from homeassistant.data_entry_flow import FlowResult
-from .const import DOMAIN
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_API_KEY
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+import aiohttp
+
+from .const import DOMAIN, NAME, DEFAULT_PORT
 
 class PiHoleStatsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Pi-hole v6 Stats."""
+
     VERSION = 1
 
-    async def async_step_user(self, user_input=None) -> FlowResult:
+    async def async_step_user(self, user_input=None):
+        """Handle the initial step."""
         errors = {}
+
         if user_input is not None:
-            host = user_input["host"]
-            port = user_input["port"]
-            # Ensure no accidental spaces
-            pw = user_input["api_key"].strip()
-
+            host = user_input[CONF_HOST].strip().rstrip("/")
+            port = user_input[CONF_PORT]
+            api_key = user_input[CONF_API_KEY]
+            
+            # 1. Validate the connection to Pi-hole v6
+            session = async_get_clientsession(self.hass)
             try:
-                async with async_timeout.timeout(10):
-                    # We create a temporary session to test credentials
-                    async with aiohttp.ClientSession() as session:
-                        url = f"http://{host}:{port}/api/auth"
-                        # Pi-hole v6 requires Content-Type: application/json
-                        async with session.post(url, json={"password": pw}) as resp:
-                            response_data = await resp.json()
-                            session_info = response_data.get("session", {})
-                            
-                            # v6 returns valid: true even if password is wrong, 
-                            # but sid will be null
-                            if resp.status == 200 and session_info.get("sid") is not None:
-                                return self.async_create_entry(
-                                    title=f"Pi-Hole ({host})", 
-                                    data={**user_input, "api_key": pw}
-                                )
-                            
-                            errors["base"] = "invalid_auth"
+                auth_url = f"http://{host}:{port}/api/auth"
+                async with session.post(auth_url, json={"password": api_key}, timeout=5) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        sid = data.get("session", {}).get("sid")
+                        if sid:
+                            # 2. SUCCESS: Create entry
+                            # The 'title' here is what our sensor.py uses for naming
+                            return self.async_create_entry(
+                                title=user_input.get("name", "Pi-hole"),
+                                data={
+                                    CONF_HOST: host,
+                                    CONF_PORT: port,
+                                    CONF_API_KEY: api_key,
+                                    "sid": sid
+                                }
+                            )
+                        errors["base"] = "invalid_auth"
+                    else:
+                        errors["base"] = "cannot_connect"
             except Exception:
-                errors["base"] = "cannot_connect"
+                errors["base"] = "unknown"
 
+        # 3. Form Schema
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
-                vol.Required("host"): str,
-                vol.Required("port", default=80): int,
-                vol.Required("api_key"): str,
+                vol.Required("name", default="Pi-hole"): str,
+                vol.Required(CONF_HOST): str,
+                vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
+                vol.Required(CONF_API_KEY): str,
             }),
-            errors=errors
+            errors=errors,
         )
