@@ -1,26 +1,152 @@
 ## Examples of cards
 
-```type: entities
-title: Pi-Hole System Stats
-entities:
-  - entity: sensor.pi_hole_stat_temperature
-    name: CPU Temperature
-    icon: mdi:thermometer
-  - entity: sensor.pi_hole_stat_uptime_days
-    name: System Uptime
-    icon: mdi:timer-outline
-  - entity: sensor.pi_hole_stat_load
-    name: System Load (1m)
-    icon: mdi:speedometer
-  - entity: sensor.pi_hole_stat_memory_usage
-    name: RAM Usage
-    icon: mdi:memory
-  - entity: sensor.pi_hole_stat_cpu_usage
-    name: CPU Usage
-    icon: mdi:cpu-64-bit
-  - entity: sensor.pi_hole_stat_queries_pm
-    name: Queries Per Minute
-    icon: mdi:chart-bell-curve
+By @adelando
+
+**Requirements**
+
+To use this card, you must install the following via HACS:
+
+Mushroom Cards
+Mini Graph Card
+Card Mod
+
+
 ```
+type: custom:mod-card
+card_mod:
+  style: |
+    ha-card {
+      background: var(--ha-card-background);
+      border-radius: var(--ha-card-border-radius, 12px);
+      padding: 12px;
+      border: 1px solid var(--divider-color, #333);
+    }
+card:
+  type: vertical-stack
+  cards:
+    - type: custom:mushroom-title-card
+      title: Pi-hole System Stats
+      subtitle: Local Network DNS Management
+      card_mod:
+        style: |
+          ha-card {
+            margin-bottom: -10px;
+          }
+    - type: custom:mushroom-template-card
+      primary: Hardware & System
+      secondary: >
+        CPU: {{ states('sensor.pi_hole_stat_cpu_usage') }}% |  Temp: {{
+        states('sensor.pi_hole_stat_cpu_temp') }}°C | Load: {{
+        states('sensor.pi_hole_stat_load') }}%
+      icon: mdi:cpu-64-bit
+      icon_color: >
+        {% set temp = states('sensor.pi_hole_stat_cpu_temp') | float %} {% set
+        limit = state_attr('sensor.pi_hole_stat_cpu_temp', 'hot_limit') |
+        float(80) %} {{ 'red' if temp >= (limit - 5) else 'green' }}
+      card_mod:
+        style: |
+          ha-card {
+            /* Background turns faint red if DNS Blocking is Disabled */
+            background: {{ 'rgba(255, 0, 0, 0.1)' if is_state('sensor.pi_hole_stat_blocking', 'Disabled') else 'none' }};
+            transition: background 0.5s ease;
+          }
+    - type: custom:mini-graph-card
+      entities:
+        - entity: sensor.pi_hole_stat_cpu_usage
+          name: CPU Usage
+          color: "#4caf50"
+        - entity: sensor.pi_hole_stat_cpu_temp
+          name: Temperature
+          color: "#ff9800"
+      line_width: 2
+      hours_to_show: 24
+      show:
+        extrema: true
+        fill: fade
+    - type: custom:mushroom-template-card
+      primary: Network & Blocking
+      secondary: |
+        {{ states('sensor.pi_hole_stat_ads_blocked_today') }} Ads Blocked Today
+      icon: mdi:shield-check
+      icon_color: >-
+        {{ 'green' if is_state('sensor.pi_hole_stat_blocking', 'Active') else
+        'red' }}
+      layout: horizontal
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+        - type: custom:mushroom-entity-card
+          entity: sensor.pi_hole_stat_dns_queries_today
+          name: Total Queries
+          icon: mdi:dns
+        - type: custom:mushroom-entity-card
+          entity: sensor.pi_hole_stat_active_clients
+          name: Active Clients
+          icon: mdi:account-group
+        - type: custom:mushroom-entity-card
+          entity: sensor.pi_hole_stat_domains_blocked
+          name: Gravity List
+          icon: mdi:list-status
+        - type: custom:mushroom-entity-card
+          entity: sensor.pi_hole_stat_gateway
+          name: Gateway
+          icon: mdi:router-wireless
+    - type: custom:mushroom-template-card
+      primary: Most Recent Blocked
+      secondary: "{{ states('sensor.pi_hole_stat_recent_blocked') }}"
+      icon: mdi:close-octagon
+      icon_color: red
+      tap_action:
+        action: more-info
+      entity: sensor.pi_hole_stat_recent_blocked
+    - type: conditional
+      conditions:
+        - entity: update.pi_hole_core_update
+          state: "on"
+        - entity: update.pi_hole_ftl_update
+          state: "on"
+        - entity: update.pi_hole_web_interface_update
+          state: "on"
+      card:
+        type: vertical-stack
+        cards:
+          - type: custom:mushroom-title-card
+            title: Updates Available
+            subtitle: Version mismatch detected
+          - type: custom:mushroom-template-card
+            primary: Pi-hole Core
+            secondary: >-
+              Inst: {{ state_attr('update.pi_hole_core_update',
+              'installed_version') }} | Latest: {{
+              state_attr('update.pi_hole_core_update', 'latest_version') }}
+            icon: mdi:server
+            icon_color: orange
+            entity: update.pi_hole_core_update
+            hidden: "{{ is_state('update.pi_hole_core_update', 'off') }}"
+          - type: custom:mushroom-template-card
+            primary: Pi-hole FTL
+            secondary: >-
+              Inst: {{ state_attr('update.pi_hole_ftl_update',
+              'installed_version') }} | Latest: {{
+              state_attr('update.pi_hole_ftl_update', 'latest_version') }}
+            icon: mdi:engine
+            icon_color: orange
+            entity: update.pi_hole_ftl_update
+          - type: custom:mushroom-template-card
+            primary: Web Interface
+            secondary: >-
+              Inst: {{ state_attr('update.pi_hole_web_interface_update',
+              'installed_version') }} | Latest: {{
+              state_attr('update.pi_hole_web_interface_update',
+              'latest_version') }}
+            icon: mdi:monitor-dashboard
+            icon_color: orange
+            entity: update.pi_hole_web_interface_update
+    
+```
+If you have more than 1 installation, be sure to select the correct entities using the entity numbering sequence in the README file
 
 
+want your custom card here, do a pull request and ill add to
+the list
