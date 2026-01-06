@@ -17,7 +17,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("load", "System Load", "%", "mdi:speedometer"),
         ("uptime_days", "Uptime", "days", "mdi:timer-outline"),
         ("dns_queries_today", "Total Queries", "queries", "mdi:dns"),
-        ("ads_blocked_today", "Ads Blocked", "ads", "mdi:hand-octagon"),
+        ("ads_blocked_today", "Ads Blocked", "ads", "mdi:advertisements"),
         ("domains_blocked", "Total Domains Blocked", "domains", "mdi:list-status"),
         ("gateway", "Network Gateway", None, "mdi:router-wireless"),
         ("blocking", "DNS Blocking", None, "mdi:shield-check"),
