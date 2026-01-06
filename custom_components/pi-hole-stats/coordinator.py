@@ -9,7 +9,7 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 class PiHoleStatsCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching Pi-hole data."""
+    """Class to manage fetching Pi-hole v6 data."""
 
     def __init__(self, hass, entry):
         """Initialize."""
@@ -39,6 +39,7 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
 
         try:
             async with async_timeout.timeout(10):
+                # Ensure we have a session ID
                 if not self.sid:
                     async with session.post(f"{base_url}/auth", json={"password": self.pw}) as resp:
                         auth_data = await resp.json()
@@ -61,15 +62,22 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     async with session.get(f"{base_url}/{path}", headers=headers) as resp:
                         res[ep] = await resp.json()
 
+                # Drill into v6 nested JSON structures
                 sys = res["system"].get("system", {})
                 sens = res["sensors"].get("sensors", {})
                 ver_root = res["version"].get("version", {})
                 hst = res["host"].get("host", {})
                 msgs = res["messages"].get("messages", [])
                 
-                is_blocking = res["blocking"].get("blocking", False)
+                # Blocking: Check for "enabled" string per v6 API
+                blocking_data = res["blocking"]
+                is_blocking = blocking_data.get("blocking") == "enabled"
+                blocking_timer = blocking_data.get("timer")
+
+                # Clients: summary -> clients -> active
                 active_clients = res["summary"].get("clients", {}).get("active", 0)
 
+                # Gateway: Pick first address
                 gw_list = res["gateway"].get("gateway", [])
                 gateway_ip = gw_list[0].get("address", "N/A") if gw_list else "N/A"
 
@@ -82,10 +90,11 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     "uptime_days": round(sys.get("uptime", 0) / 86400, 2),
                     "gateway": gateway_ip,
                     "blocking": "Active" if is_blocking else "Disabled",
+                    "blocking_timer": blocking_timer,
                     "active_clients": active_clients,
                     "msg_count": len(msgs),
-                    # FIXED: Maps the actual message string to the ID for the attributes
-                    "msg_list": {f"Alert {m.get('id', i)}": m.get("message", "No message content") for i, m in enumerate(msgs)},
+                    # FIXED: Correctly map 'plain' text from messages
+                    "msg_list": {f"Alert {m.get('id', i)}": m.get("plain", "No content") for i, m in enumerate(msgs)},
                     "ver_core": ver_root.get("core", {}).get("local", {}).get("version", "N/A"),
                     "rem_core": ver_root.get("core", {}).get("remote", {}).get("version", "N/A"),
                     "ver_ftl": ver_root.get("ftl", {}).get("local", {}).get("version", "N/A"),
