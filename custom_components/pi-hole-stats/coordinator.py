@@ -68,22 +68,21 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                 
                 is_blocking = res["blocking"].get("blocking") == "enabled"
                 
-                # Update Recent Blocks: Using the "blocked" key from your image
-                recent_list = res["recent_blocked"].get("blocked", [])
-
                 return {
                     "cpu_temp": round(float(sens.get("cpu_temp", 0)), 1),
+                    "hot_limit": sens.get("hot_limit", 0),
                     "cpu_usage": round(sys.get("cpu", {}).get("%cpu", 0), 1),
                     "mem_usage": round(sys.get("memory", {}).get("ram", {}).get("%used", 0), 1),
                     "load": round(float(sys.get("cpu", {}).get("load", {}).get("raw", [0])[0]), 2),
                     "uptime_days": round(sys.get("uptime", 0) / 86400, 2),
                     "gateway": res["gateway"].get("gateway", [{}])[0].get("address", "N/A"),
                     "blocking": "Active" if is_blocking else "Disabled",
+                    "blocking_timer": res["blocking"].get("timer"),
                     "active_clients": sum_data.get("clients", {}).get("active", 0),
-                    # New Total Sensors
+                    # UPDATED KEYS FROM YOUR API EXAMPLE
                     "dns_queries_today": sum_data.get("queries", {}).get("total", 0),
                     "ads_blocked_today": sum_data.get("queries", {}).get("blocked", 0),
-                    "domains_blocked": sum_data.get("gravity", {}).get("domains_total", 0),
+                    "domains_blocked": sum_data.get("gravity", {}).get("domains_being_blocked", 0),
                     "msg_count": len(msgs),
                     "msg_list": {f"Alert {m.get('id', i)}": m.get("plain", "No content") for i, m in enumerate(msgs)},
                     "ver_core": ver_root.get("core", {}).get("local", {}).get("version", "N/A"),
@@ -93,7 +92,7 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     "ver_web": ver_root.get("web", {}).get("local", {}).get("version", "N/A"),
                     "rem_web": ver_root.get("web", {}).get("remote", {}).get("version", "N/A"),
                     "host_model": hst.get("model", hst.get("sysname", "Unknown")),
-                    "recent_blocked": recent_list
+                    "recent_blocked": res["recent_blocked"].get("blocked", [])
                 }
         except Exception as e:
             self.sid = None
