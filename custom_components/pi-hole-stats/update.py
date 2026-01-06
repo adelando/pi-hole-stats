@@ -1,3 +1,4 @@
+"""Update platform for Pi-hole v6 Stats."""
 from homeassistant.components.update import (
     UpdateEntity, 
     UpdateEntityFeature, 
@@ -10,7 +11,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
     """Set up Pi-hole update entities."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     
-    # Add entities for Core, FTL, and Web components
     async_add_entities([
         PiHoleUpdateEntity(coordinator, entry, "core", "Core"),
         PiHoleUpdateEntity(coordinator, entry, "ftl", "FTL"),
@@ -20,7 +20,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class PiHoleUpdateEntity(CoordinatorEntity, UpdateEntity):
     """Representation of a Pi-hole update entity."""
 
-    # Set supported features - Release notes allow the UI to show a link to GitHub
     _attr_supported_features = UpdateEntityFeature.RELEASE_NOTES
     _attr_device_class = UpdateDeviceClass.FIRMWARE
 
@@ -32,16 +31,19 @@ class PiHoleUpdateEntity(CoordinatorEntity, UpdateEntity):
         self._attr_unique_id = f"{entry.entry_id}_update_{key}"
         self._attr_device_info = coordinator.device_info
         
-        # Determine the release URL based on the component
+        # Determine the release URL
         repo = "web" if key == "web" else "pi-hole"
         self._attr_release_url = f"https://github.com/pi-hole/{repo}/releases"
+        
+        # FIXED: This prevents HA from expecting an install action, clearing the unknown error
+        self._attr_can_install = False
 
     @property
     def installed_version(self):
-        """Version installed and in use."""
+        """Return the current installed version."""
         return self.coordinator.data.get(f"ver_{self._key}")
 
     @property
     def latest_version(self):
-        """Latest version available from the remote."""
+        """Return the latest available version."""
         return self.coordinator.data.get(f"rem_{self._key}")
