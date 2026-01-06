@@ -49,7 +49,6 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                 
                 res = {}
                 for ep in endpoints:
-                    # Mapping endpoints to their correct v6 paths
                     if ep in ["summary", "recent_blocked"]:
                         path = f"stats/{ep}"
                     elif ep == "blocking":
@@ -62,20 +61,15 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     async with session.get(f"{base_url}/{path}", headers=headers) as resp:
                         res[ep] = await resp.json()
 
-                # Drill into the v6 nested structures
                 sys = res["system"].get("system", {})
                 sens = res["sensors"].get("sensors", {})
                 ver_root = res["version"].get("version", {})
                 hst = res["host"].get("host", {})
                 msgs = res["messages"].get("messages", [])
                 
-                # Fixed: Blocking is often a boolean in v6
                 is_blocking = res["blocking"].get("blocking", False)
-
-                # Fixed: Active clients is in the summary -> clients -> active
                 active_clients = res["summary"].get("clients", {}).get("active", 0)
 
-                # Fixed: Gateway extraction
                 gw_list = res["gateway"].get("gateway", [])
                 gateway_ip = gw_list[0].get("address", "N/A") if gw_list else "N/A"
 
@@ -84,15 +78,16 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     "hot_limit": sens.get("hot_limit", 0),
                     "cpu_usage": round(sys.get("cpu", {}).get("%cpu", 0), 1),
                     "mem_usage": round(sys.get("memory", {}).get("ram", {}).get("%used", 0), 1),
-                    "load": round(sys.get("cpu", {}).get("load", {}).get("raw", [0])[0], 2),
+                    "load": round(float(sys.get("cpu", {}).get("load", {}).get("raw", [0])[0]), 2),
                     "uptime_days": round(sys.get("uptime", 0) / 86400, 2),
                     "gateway": gateway_ip,
                     "blocking": "Active" if is_blocking else "Disabled",
                     "active_clients": active_clients,
                     "msg_count": len(msgs),
-                    "msg_list": {f"Alert {i}": m.get("message", "No message") for i, m in enumerate(msgs)},
+                    # FIXED: Maps the actual message string to the ID for the attributes
+                    "msg_list": {f"Alert {m.get('id', i)}": m.get("message", "No message content") for i, m in enumerate(msgs)},
                     "ver_core": ver_root.get("core", {}).get("local", {}).get("version", "N/A"),
-                    "rem_core": ver_root.get("core", {}).get("remote", {}).get("version", "N/at"),
+                    "rem_core": ver_root.get("core", {}).get("remote", {}).get("version", "N/A"),
                     "ver_ftl": ver_root.get("ftl", {}).get("local", {}).get("version", "N/A"),
                     "rem_ftl": ver_root.get("ftl", {}).get("remote", {}).get("version", "N/A"),
                     "ver_web": ver_root.get("web", {}).get("local", {}).get("version", "N/A"),
