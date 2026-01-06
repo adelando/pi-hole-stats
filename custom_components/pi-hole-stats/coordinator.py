@@ -12,7 +12,6 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Pi-hole v6 data."""
 
     def __init__(self, hass, entry):
-        """Initialize."""
         self.entry = entry
         self.host = entry.data["host"].strip().rstrip("/")
         self.port = entry.data["port"]
@@ -33,13 +32,11 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
-        """Fetch data from API endpoint."""
         session = async_get_clientsession(self.hass)
         base_url = f"http://{self.host}:{self.port}/api"
 
         try:
             async with async_timeout.timeout(10):
-                # Ensure we have a session ID
                 if not self.sid:
                     async with session.post(f"{base_url}/auth", json={"password": self.pw}) as resp:
                         auth_data = await resp.json()
@@ -62,38 +59,32 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     async with session.get(f"{base_url}/{path}", headers=headers) as resp:
                         res[ep] = await resp.json()
 
-                # Drill into v6 nested JSON structures
                 sys = res["system"].get("system", {})
                 sens = res["sensors"].get("sensors", {})
                 ver_root = res["version"].get("version", {})
                 hst = res["host"].get("host", {})
                 msgs = res["messages"].get("messages", [])
+                sum_data = res["summary"]
                 
-                # Blocking: Check for "enabled" string per v6 API
-                blocking_data = res["blocking"]
-                is_blocking = blocking_data.get("blocking") == "enabled"
-                blocking_timer = blocking_data.get("timer")
-
-                # Clients: summary -> clients -> active
-                active_clients = res["summary"].get("clients", {}).get("active", 0)
-
-                # Gateway: Pick first address
-                gw_list = res["gateway"].get("gateway", [])
-                gateway_ip = gw_list[0].get("address", "N/A") if gw_list else "N/A"
+                is_blocking = res["blocking"].get("blocking") == "enabled"
+                
+                # Update Recent Blocks: Using the "blocked" key from your image
+                recent_list = res["recent_blocked"].get("blocked", [])
 
                 return {
                     "cpu_temp": round(float(sens.get("cpu_temp", 0)), 1),
-                    "hot_limit": sens.get("hot_limit", 0),
                     "cpu_usage": round(sys.get("cpu", {}).get("%cpu", 0), 1),
                     "mem_usage": round(sys.get("memory", {}).get("ram", {}).get("%used", 0), 1),
                     "load": round(float(sys.get("cpu", {}).get("load", {}).get("raw", [0])[0]), 2),
                     "uptime_days": round(sys.get("uptime", 0) / 86400, 2),
-                    "gateway": gateway_ip,
+                    "gateway": res["gateway"].get("gateway", [{}])[0].get("address", "N/A"),
                     "blocking": "Active" if is_blocking else "Disabled",
-                    "blocking_timer": blocking_timer,
-                    "active_clients": active_clients,
+                    "active_clients": sum_data.get("clients", {}).get("active", 0),
+                    # New Total Sensors
+                    "dns_queries_today": sum_data.get("queries", {}).get("total", 0),
+                    "ads_blocked_today": sum_data.get("queries", {}).get("blocked", 0),
+                    "domains_blocked": sum_data.get("gravity", {}).get("domains_total", 0),
                     "msg_count": len(msgs),
-                    # FIXED: Correctly map 'plain' text from messages
                     "msg_list": {f"Alert {m.get('id', i)}": m.get("plain", "No content") for i, m in enumerate(msgs)},
                     "ver_core": ver_root.get("core", {}).get("local", {}).get("version", "N/A"),
                     "rem_core": ver_root.get("core", {}).get("remote", {}).get("version", "N/A"),
@@ -102,15 +93,9 @@ class PiHoleStatsCoordinator(DataUpdateCoordinator):
                     "ver_web": ver_root.get("web", {}).get("local", {}).get("version", "N/A"),
                     "rem_web": ver_root.get("web", {}).get("remote", {}).get("version", "N/A"),
                     "host_model": hst.get("model", hst.get("sysname", "Unknown")),
-                    "host_attr": {
-                        "release": hst.get("release"),
-                        "architecture": hst.get("machine"),
-                        "kernel": hst.get("version")
-                    },
-                    "recent_blocked": res["recent_blocked"].get("recent_blocked", []),
-                    "queries_pm": round(res["summary"].get("queries", {}).get("total", 0) / (max(sys.get("uptime", 1)/60, 1)), 2)
+                    "recent_blocked": recent_list
                 }
         except Exception as e:
             self.sid = None
-            _LOGGER.error("Update failed for Pi-hole: %s", e)
+            _LOGGER.error("Update failed: %s", e)
             raise UpdateFailed(e)
