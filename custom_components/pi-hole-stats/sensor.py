@@ -1,29 +1,23 @@
-"""Sensor platform for Pi-hole v6 Stats."""
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up Pi-hole sensors."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    
     all_entries = hass.config_entries.async_entries(DOMAIN)
     all_entries.sort(key=lambda x: x.created_at if hasattr(x, 'created_at') else 0)
-    
-    try:
-        index = all_entries.index(entry)
-        num_prefix = "" if index == 0 else f"{index + 1}_"
-    except ValueError:
-        num_prefix = ""
+    num_prefix = "" if all_entries.index(entry) == 0 else f"{all_entries.index(entry) + 1}_"
 
-    # (Key, Name, Unit, Icon)
     sensor_defs = [
         ("cpu_temp", "CPU Temperature", "°C", "mdi:thermometer"),
         ("cpu_usage", "CPU Usage", "%", "mdi:cpu-64-bit"),
         ("mem_usage", "Memory Usage", "%", "mdi:memory"),
-        ("load", "System Load", "%", "mdi:speedometer"),  # Added % unit
+        ("load", "System Load", "%", "mdi:speedometer"),
         ("uptime_days", "Uptime", "days", "mdi:timer-outline"),
-        ("queries_pm", "QPM", "qpm", "mdi:chart-line"),
+        # New/Updated Sensors
+        ("dns_queries_today", "Total Queries", "queries", "mdi:dns"),
+        ("ads_blocked_today", "Ads Blocked", "queries", "mdi:hand-octagon"),
+        ("domains_blocked", "Total Domains Blocked", "domains", "mdi:list-status"),
         ("gateway", "Network Gateway", None, "mdi:router-wireless"),
         ("blocking", "DNS Blocking", None, "mdi:shield-check"),
         ("active_clients", "Active Clients", "clients", "mdi:account-group"),
@@ -32,14 +26,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("recent_blocked", "Recent Blocks", None, "mdi:close-octagon"),
     ]
 
-    async_add_entities([
-        PiHoleNumberedSensor(coordinator, entry, num_prefix, *s_def) 
-        for s_def in sensor_defs
-    ])
+    async_add_entities([PiHoleNumberedSensor(coordinator, entry, num_prefix, *s) for s in sensor_defs])
 
 class PiHoleNumberedSensor(CoordinatorEntity, SensorEntity):
-    """Representation of a Pi-hole sensor."""
-
     def __init__(self, coordinator, entry, num, key, name, unit, icon):
         super().__init__(coordinator)
         self._key = key
@@ -64,11 +53,4 @@ class PiHoleNumberedSensor(CoordinatorEntity, SensorEntity):
             return {"blocked_domains": data.get("recent_blocked", [])}
         if self._key == "msg_count":
             return {"alerts": data.get("msg_list", {})}
-        if self._key == "host_model":
-            return data.get("host_attr", {})
-        if self._key == "cpu_temp":
-            return {"hot_limit": data.get("hot_limit")}
-        if self._key == "blocking":
-            # Added timer attribute for disabled state
-            return {"timer_seconds": data.get("blocking_timer")}
         return None
