@@ -4,10 +4,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up Pi-hole sensors based on a config entry."""
+    """Set up Pi-hole sensors."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     
-    # Handle naming prefix for multiple instances
     all_entries = hass.config_entries.async_entries(DOMAIN)
     all_entries.sort(key=lambda x: x.created_at if hasattr(x, 'created_at') else 0)
     
@@ -22,7 +21,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("cpu_temp", "CPU Temperature", "°C", "mdi:thermometer"),
         ("cpu_usage", "CPU Usage", "%", "mdi:cpu-64-bit"),
         ("mem_usage", "Memory Usage", "%", "mdi:memory"),
-        ("load", "System Load", "%", "mdi:speedometer"),
+        ("load", "System Load", "%", "mdi:speedometer"),  # Added % unit
         ("uptime_days", "Uptime", "days", "mdi:timer-outline"),
         ("queries_pm", "QPM", "qpm", "mdi:chart-line"),
         ("gateway", "Network Gateway", None, "mdi:router-wireless"),
@@ -42,7 +41,6 @@ class PiHoleNumberedSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Pi-hole sensor."""
 
     def __init__(self, coordinator, entry, num, key, name, unit, icon):
-        """Initialize the sensor."""
         super().__init__(coordinator)
         self._key = key
         self.entity_id = f"sensor.pi_hole_stat_{num}{key}"
@@ -54,30 +52,23 @@ class PiHoleNumberedSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        """Return the state of the sensor."""
         val = self.coordinator.data.get(self._key)
-        
-        # If it's the recent blocks sensor, show the most recent single domain as the state
         if self._key == "recent_blocked":
             return val[0] if isinstance(val, list) and val else "None"
-            
         return val
 
     @property
     def extra_state_attributes(self):
-        """Return the state attributes for extended info."""
         data = self.coordinator.data
-        
         if self._key == "recent_blocked":
             return {"blocked_domains": data.get("recent_blocked", [])}
-            
         if self._key == "msg_count":
             return {"alerts": data.get("msg_list", {})}
-            
         if self._key == "host_model":
             return data.get("host_attr", {})
-            
         if self._key == "cpu_temp":
             return {"hot_limit": data.get("hot_limit")}
-            
+        if self._key == "blocking":
+            # Added timer attribute for disabled state
+            return {"timer_seconds": data.get("blocking_timer")}
         return None
