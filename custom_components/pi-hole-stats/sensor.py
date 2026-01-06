@@ -22,7 +22,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("cpu_temp", "CPU Temperature", "°C", "mdi:thermometer"),
         ("cpu_usage", "CPU Usage", "%", "mdi:cpu-64-bit"),
         ("mem_usage", "Memory Usage", "%", "mdi:memory"),
-        ("load", "System Load", None, "mdi:speedometer"),
+        ("load", "System Load", "%", "mdi:speedometer"),
         ("uptime_days", "Uptime", "days", "mdi:timer-outline"),
         ("queries_pm", "QPM", "qpm", "mdi:chart-line"),
         ("gateway", "Network Gateway", None, "mdi:router-wireless"),
